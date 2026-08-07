@@ -480,11 +480,6 @@ function TaxConfigTab() {
                                 </Select>
                             </div>
                         </div>
-                        {form.target === 'bonus' && (
-                            <p className="text-warning-foreground text-xs">
-                                There&apos;s no bonus-amount input yet — configs targeting Bonus currently always compute to 0.
-                            </p>
-                        )}
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1.5">
                                 <Label>Bearer</Label>

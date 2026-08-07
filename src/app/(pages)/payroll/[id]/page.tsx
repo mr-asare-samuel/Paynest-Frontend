@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useAuthStore } from '@/(zustand-store)/authStore';
 import {
     getPayrollRunById, getRunPayslips,
-    submitPayrollRun, approvePayrollRun, processPayrollRun,
+    submitPayrollRun, approvePayrollRun, processPayrollRun, updatePayslipBonus,
 } from '@/(api-handlers)/payrollHandler';
 import { getOrganizationUsers } from '@/(api-handlers)/userHandler';
 import { PayrollRun, PayrollRunStatus, Payslip } from '@/interfaces/payroll';
@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
@@ -32,7 +33,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
     ChevronLeft, Eye, Send, CheckCircle2, XCircle, PlayCircle,
-    Clock, FileSearch, ReceiptText, Users,
+    Clock, FileSearch, ReceiptText, Users, Gift,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -67,6 +68,9 @@ export default function PayrollRunDetailPage() {
     const [rejectReason, setRejectReason] = useState('');
     const [approveOpen, setApproveOpen] = useState(false);
     const [processOpen, setProcessOpen] = useState(false);
+    const [bonusTarget, setBonusTarget] = useState<Payslip | null>(null);
+    const [bonusAmount, setBonusAmount] = useState('');
+    const [bonusReason, setBonusReason] = useState('');
 
     useEffect(() => {
         if (user && user.role !== 'admin') router.replace('/dashboard');
@@ -136,6 +140,29 @@ export default function PayrollRunDetailPage() {
             fetchAll();
         } catch (err) {
             handleErrorMessage(err, 'Failed to reject run');
+        } finally {
+            setActing(false);
+        }
+    };
+
+    const openBonusDialog = (slip: Payslip) => {
+        setBonusTarget(slip);
+        setBonusAmount(slip.bonus_amount ? String(slip.bonus_amount) : '');
+        setBonusReason('');
+    };
+
+    const handleBonusSave = async () => {
+        if (!run || !bonusTarget) return;
+        const amount = Number(bonusAmount);
+        if (Number.isNaN(amount) || amount < 0) { toast.error('Enter a valid bonus amount'); return; }
+        setActing(true);
+        try {
+            await updatePayslipBonus(run.id, bonusTarget.id, { bonus_amount: amount, reason: bonusReason || undefined });
+            toast.success('Bonus updated');
+            setBonusTarget(null);
+            fetchAll();
+        } catch (err) {
+            handleErrorMessage(err, 'Failed to update bonus');
         } finally {
             setActing(false);
         }
@@ -268,7 +295,7 @@ export default function PayrollRunDetailPage() {
                                 <TableHead>Deductions</TableHead>
                                 <TableHead>Net Pay</TableHead>
                                 <TableHead>Status</TableHead>
-                                <TableHead className="pr-6 w-[80px] text-right">Actions</TableHead>
+                                <TableHead className="pr-6 w-[110px] text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -298,11 +325,26 @@ export default function PayrollRunDetailPage() {
                                         </TableCell>
                                         <TableCell className="num-tabular text-sm">{fmt(slip.gross_pay)}</TableCell>
                                         <TableCell className="num-tabular text-sm text-muted-foreground">{fmt(slip.total_deductions)}</TableCell>
-                                        <TableCell className="num-tabular text-sm font-semibold">{fmt(slip.net_pay)}</TableCell>
+                                        <TableCell className="num-tabular text-sm font-semibold">
+                                            {fmt(slip.net_pay)}
+                                            {slip.bonus_amount > 0 && (
+                                                <Badge variant="outline" className="ml-2 rounded-full border-success/30 bg-success/10 text-[10px] text-success">
+                                                    +{fmt(slip.bonus_amount)} bonus
+                                                </Badge>
+                                            )}
+                                        </TableCell>
                                         <TableCell>
                                             <Badge variant="outline" className="rounded-full text-xs capitalize">{slip.status}</Badge>
                                         </TableCell>
                                         <TableCell className="pr-6 text-right">
+                                            {(run.status === 'draft' || run.status === 'rejected') && (
+                                                <Button
+                                                    variant="ghost" size="icon" className="size-8" aria-label="Add or edit bonus"
+                                                    onClick={() => openBonusDialog(slip)}
+                                                >
+                                                    <Gift className="size-4" />
+                                                </Button>
+                                            )}
                                             <Button variant="ghost" size="icon" className="size-8" asChild aria-label="View payslip">
                                                 <Link href={`/payroll/payslips/${slip.id}`}><Eye className="size-4" /></Link>
                                             </Button>
@@ -345,6 +387,30 @@ export default function PayrollRunDetailPage() {
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setRejectOpen(false)}>Cancel</Button>
                         <Button variant="destructive" onClick={handleReject} disabled={acting}>{acting ? 'Rejecting…' : 'Reject Run'}</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Bonus dialog */}
+            <Dialog open={!!bonusTarget} onOpenChange={open => { if (!open) setBonusTarget(null); }}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader><DialogTitle>Add / Edit Bonus</DialogTitle></DialogHeader>
+                    <div className="space-y-4 pt-2">
+                        <div className="space-y-1.5">
+                            <Label>Bonus Amount</Label>
+                            <Input type="number" min={0} step="0.01" value={bonusAmount} onChange={e => setBonusAmount(e.target.value)} />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label>Reason (optional)</Label>
+                            <Textarea value={bonusReason} onChange={e => setBonusReason(e.target.value)} className="min-h-[80px] resize-none" />
+                        </div>
+                        <p className="text-muted-foreground text-xs">
+                            Any Bonus-targeted tax rules configured in Settings → Payroll will be applied automatically.
+                        </p>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setBonusTarget(null)}>Cancel</Button>
+                        <Button onClick={handleBonusSave} disabled={acting}>{acting ? 'Saving…' : 'Save Bonus'}</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

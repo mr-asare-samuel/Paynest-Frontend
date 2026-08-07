@@ -7,7 +7,8 @@ import {
     EmployeeBenefitsSummary, AssignBenefitBandRequest, AddExtraBenefitItemRequest,
     NetToGrossRequest, NetToGrossResponse,
     PayrollRun, PayrollRunCreate, PayrollRunListResponse,
-    Payslip, MyPayslipListResponse,
+    Payslip, MyPayslipListResponse, PayslipBonusUpdate,
+    PayrollTrendsResponse,
 } from "@/interfaces/payroll"
 import apiClient from "@/lib/apiClient"
 import axios from "axios"
@@ -261,6 +262,28 @@ export const getPayrollRunById = async (id: number, organizationId?: number): Pr
 export const getRunPayslips = async (runId: number, organizationId?: number): Promise<Payslip[]> => {
     try {
         const response = await apiClient.get(`/payroll/runs/${runId}/payslips`, { params: { organization_id: organizationId } })
+        return response.data
+    } catch (error: unknown) {
+        throw error;
+    }
+}
+
+export const updatePayslipBonus = async (
+    runId: number, payslipId: number, data: PayslipBonusUpdate, organizationId?: number,
+): Promise<Payslip> => {
+    try {
+        const response = await apiClient.put(
+            `/payroll/runs/${runId}/payslips/${payslipId}/bonus`, data, { params: { organization_id: organizationId } },
+        )
+        return response.data
+    } catch (error: unknown) {
+        throw error;
+    }
+}
+
+export const getPayrollTrends = async (limit = 12, organizationId?: number): Promise<PayrollTrendsResponse> => {
+    try {
+        const response = await apiClient.get(`/payroll/runs/trends`, { params: { limit, organization_id: organizationId } })
         return response.data
     } catch (error: unknown) {
         throw error;

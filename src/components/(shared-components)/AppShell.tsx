@@ -17,6 +17,7 @@ import {
     ChevronRight,
     CircleDollarSign,
     CircleUser,
+    Clock,
     CreditCard,
     FileText,
     Home,
@@ -32,6 +33,7 @@ import {
     Settings2,
     ShoppingCart,
     Tag,
+    TrendingUp,
     UserPlus,
     Users,
     UsersRound,
@@ -186,6 +188,7 @@ const NAV_GROUPS: NavGroup[] = [
         roles: ["admin"],
         items: [
             { name: "Payroll Runs", href: "/payroll", icon: Banknote, roles: ["admin"] },
+            { name: "Payroll History", href: "/payroll/history", icon: TrendingUp, roles: ["admin"] },
             { name: "Employee Payroll", href: "/payroll/employees", icon: Wallet, roles: ["admin"] },
             { name: "Payroll Settings", href: "/settings/payroll", icon: Calculator, roles: ["admin"] },
         ],
@@ -209,6 +212,7 @@ const NAV_GROUPS: NavGroup[] = [
         roles: ["admin", "manager", "attendant"],
         items: [
             { name: "Shifts & Overtime", href: "/scheduling", icon: CalendarClock, roles: ["admin", "manager", "attendant"] },
+            { name: "Timesheets", href: "/timesheets", icon: Clock, roles: ["admin", "manager", "attendant"] },
             { name: "Overtime Rules", href: "/settings/scheduling", icon: Settings2, roles: ["admin"] },
         ],
     },
