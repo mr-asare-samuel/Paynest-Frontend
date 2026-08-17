@@ -11,7 +11,7 @@ import {
 import { getUserByID } from '@/(api-handlers)/userHandler';
 import {
     SalaryStructure, EmployeeBenefitsSummary, ExtraBenefitItem,
-    BenefitBand, BenefitItem, BenefitCategory,
+    BenefitBand, BenefitItem, BenefitCategory, WageType,
 } from '@/interfaces/payroll';
 import { UserResponse } from '@/interfaces/loginInterface';
 import { handleErrorMessage } from '@/utils/handleErrorMessage';
@@ -49,6 +49,8 @@ function getInitials(first?: string, last?: string) {
     return `${first?.[0] ?? ''}${last?.[0] ?? ''}`.toUpperCase() || '?';
 }
 
+const WAGE_TYPE_LABEL: Record<WageType, string> = { salaried: 'Salaried', hourly: 'Hourly', commission: 'Commission' };
+
 export default function EmployeePayrollDetailPage() {
     const { user } = useAuthStore();
     const router = useRouter();
@@ -58,6 +60,15 @@ export default function EmployeePayrollDetailPage() {
     const userId = searchParams.get('user_id');
     const fmt = useCurrency();
 
+    const formatWage = (s: SalaryStructure) => {
+        if (s.wage_type === 'hourly') return `${fmt(s.hourly_rate ?? 0)}/hr`;
+        if (s.wage_type === 'commission') {
+            const pct = `${((s.commission_rate ?? 0) * 100).toFixed(1)}% of sales`;
+            return s.base_amount > 0 ? `${pct} + ${fmt(s.base_amount)}` : pct;
+        }
+        return fmt(s.base_amount);
+    };
+
     const [employee, setEmployee] = useState<UserResponse | null>(null);
     const [salaryHistory, setSalaryHistory] = useState<SalaryStructure[]>([]);
     const [benefitsSummary, setBenefitsSummary] = useState<EmployeeBenefitsSummary | null>(null);
@@ -66,7 +77,9 @@ export default function EmployeePayrollDetailPage() {
     const [loading, setLoading] = useState(true);
 
     const [salaryDialogOpen, setSalaryDialogOpen] = useState(false);
-    const [salaryForm, setSalaryForm] = useState<{ amount: string; effectiveDate: Dayjs | null }>({ amount: '', effectiveDate: dayjs() });
+    const [salaryForm, setSalaryForm] = useState<{
+        wageType: WageType; amount: string; hourlyRate: string; commissionRate: string; baseRetainer: string; effectiveDate: Dayjs | null;
+    }>({ wageType: 'salaried', amount: '', hourlyRate: '', commissionRate: '', baseRetainer: '', effectiveDate: dayjs() });
     const [savingSalary, setSavingSalary] = useState(false);
 
     const [bandDialogOpen, setBandDialogOpen] = useState(false);
@@ -114,17 +127,25 @@ export default function EmployeePayrollDetailPage() {
 
     const handleSetSalary = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!salaryForm.amount || !salaryForm.effectiveDate) { toast.error('Enter a base amount and effective date'); return; }
+        const { wageType, amount, hourlyRate, commissionRate, baseRetainer, effectiveDate } = salaryForm;
+        if (!effectiveDate) { toast.error('Pick an effective date'); return; }
+        if (wageType === 'salaried' && !amount) { toast.error('Enter a base amount'); return; }
+        if (wageType === 'hourly' && !hourlyRate) { toast.error('Enter an hourly rate'); return; }
+        if (wageType === 'commission' && !commissionRate) { toast.error('Enter a commission rate'); return; }
+
         setSavingSalary(true);
         try {
             await createSalaryStructure({
                 employee_profile_id: employeeProfileId,
-                base_amount: Number(salaryForm.amount),
-                effective_date: salaryForm.effectiveDate.format('YYYY-MM-DD'),
+                wage_type: wageType,
+                base_amount: wageType === 'salaried' ? Number(amount) : wageType === 'commission' ? Number(baseRetainer || 0) : 0,
+                hourly_rate: wageType === 'hourly' ? Number(hourlyRate) : undefined,
+                commission_rate: wageType === 'commission' ? Number(commissionRate) / 100 : undefined,
+                effective_date: effectiveDate.format('YYYY-MM-DD'),
             });
             toast.success('Salary updated');
             setSalaryDialogOpen(false);
-            setSalaryForm({ amount: '', effectiveDate: dayjs() });
+            setSalaryForm({ wageType: 'salaried', amount: '', hourlyRate: '', commissionRate: '', baseRetainer: '', effectiveDate: dayjs() });
             fetchAll();
         } catch (err) {
             handleErrorMessage(err, 'Failed to set salary');
@@ -244,8 +265,11 @@ export default function EmployeePayrollDetailPage() {
                             <Skeleton className="h-16 w-full" />
                         ) : activeSalary ? (
                             <div className="border-primary/20 bg-primary/5 mb-4 rounded-lg border p-4">
-                                <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Current Base Salary</p>
-                                <p className="text-foreground mt-1 text-2xl font-bold">{fmt(activeSalary.base_amount)}</p>
+                                <div className="flex items-center gap-2">
+                                    <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Current Salary</p>
+                                    <Badge variant="outline" className="rounded-full text-[10px]">{WAGE_TYPE_LABEL[activeSalary.wage_type]}</Badge>
+                                </div>
+                                <p className="text-foreground mt-1 text-2xl font-bold">{formatWage(activeSalary)}</p>
                                 <p className="text-muted-foreground mt-1 text-xs">
                                     Effective {new Date(activeSalary.effective_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                                 </p>
@@ -258,7 +282,8 @@ export default function EmployeePayrollDetailPage() {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead>Base Amount</TableHead>
+                                        <TableHead>Wage</TableHead>
+                                        <TableHead>Type</TableHead>
                                         <TableHead>Effective</TableHead>
                                         <TableHead>Ended</TableHead>
                                     </TableRow>
@@ -266,7 +291,8 @@ export default function EmployeePayrollDetailPage() {
                                 <TableBody>
                                     {salaryHistory.map(s => (
                                         <TableRow key={s.id}>
-                                            <TableCell className="text-sm font-medium">{fmt(s.base_amount)}</TableCell>
+                                            <TableCell className="text-sm font-medium">{formatWage(s)}</TableCell>
+                                            <TableCell className="text-muted-foreground text-sm">{WAGE_TYPE_LABEL[s.wage_type]}</TableCell>
                                             <TableCell className="text-muted-foreground text-sm">
                                                 {new Date(s.effective_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                                             </TableCell>
@@ -369,9 +395,42 @@ export default function EmployeePayrollDetailPage() {
                     <DialogHeader><DialogTitle>Set New Salary</DialogTitle></DialogHeader>
                     <form onSubmit={handleSetSalary} className="space-y-5 pt-2">
                         <div className="space-y-1.5">
-                            <Label>Base Amount</Label>
-                            <Input type="number" step="0.01" min={0} value={salaryForm.amount} onChange={e => setSalaryForm(f => ({ ...f, amount: e.target.value }))} required />
+                            <Label>Wage Type</Label>
+                            <Select value={salaryForm.wageType} onValueChange={v => setSalaryForm(f => ({ ...f, wageType: v as WageType }))}>
+                                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="salaried">Salaried</SelectItem>
+                                    <SelectItem value="hourly">Hourly</SelectItem>
+                                    <SelectItem value="commission">Commission</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
+                        {salaryForm.wageType === 'salaried' && (
+                            <div className="space-y-1.5">
+                                <Label>Base Amount</Label>
+                                <Input type="number" step="0.01" min={0} value={salaryForm.amount} onChange={e => setSalaryForm(f => ({ ...f, amount: e.target.value }))} required />
+                            </div>
+                        )}
+                        {salaryForm.wageType === 'hourly' && (
+                            <div className="space-y-1.5">
+                                <Label>Hourly Rate</Label>
+                                <Input type="number" step="0.01" min={0} value={salaryForm.hourlyRate} onChange={e => setSalaryForm(f => ({ ...f, hourlyRate: e.target.value }))} required />
+                                <p className="text-muted-foreground text-xs">Pay is calculated from approved timesheet hours for the run&apos;s pay period.</p>
+                            </div>
+                        )}
+                        {salaryForm.wageType === 'commission' && (
+                            <>
+                                <div className="space-y-1.5">
+                                    <Label>Commission Rate (%)</Label>
+                                    <Input type="number" step="0.01" min={0} max={100} value={salaryForm.commissionRate} onChange={e => setSalaryForm(f => ({ ...f, commissionRate: e.target.value }))} required />
+                                    <p className="text-muted-foreground text-xs">Applied to this employee&apos;s attributed sales for the run&apos;s pay period.</p>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label>Base Retainer (optional)</Label>
+                                    <Input type="number" step="0.01" min={0} value={salaryForm.baseRetainer} onChange={e => setSalaryForm(f => ({ ...f, baseRetainer: e.target.value }))} />
+                                </div>
+                            </>
+                        )}
                         <div className="space-y-1.5">
                             <Label>Effective Date</Label>
                             <DatePicker
@@ -383,7 +442,7 @@ export default function EmployeePayrollDetailPage() {
                         </div>
                         {activeSalary && (
                             <p className="text-muted-foreground text-xs">
-                                This automatically ends the current {fmt(activeSalary.base_amount)} salary the day before this new effective date.
+                                This automatically ends the current {formatWage(activeSalary)} salary the day before this new effective date.
                             </p>
                         )}
                         <DialogFooter>

@@ -123,9 +123,23 @@ export default function PayslipDetailPage() {
                 <CardContent className="space-y-6 px-6 py-6">
                     <div className="space-y-2">
                         <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Base Pay</span>
+                            <span className="text-muted-foreground">
+                                Base Pay
+                                {payslip.wage_type === 'hourly' && payslip.hours_worked != null && (
+                                    <span className="ml-1.5 text-xs">({payslip.hours_worked} hrs × {fmt((payslip.base_pay || 0) / (payslip.hours_worked || 1))}/hr)</span>
+                                )}
+                                {payslip.wage_type === 'commission' && payslip.commission_base != null && (
+                                    <span className="ml-1.5 text-xs">({fmt(payslip.commission_base)} in sales)</span>
+                                )}
+                            </span>
                             <span className="text-foreground font-medium">{fmt(payslip.base_pay)}</span>
                         </div>
+                        {payslip.unpaid_leave_days > 0 && (
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Unpaid Leave ({payslip.unpaid_leave_days} days)</span>
+                                <span className="text-destructive font-medium">-{fmt(payslip.unpaid_leave_deduction)}</span>
+                            </div>
+                        )}
                         <div className="flex justify-between text-sm">
                             <span className="text-muted-foreground">Total Allowances</span>
                             <span className="text-success font-medium">+{fmt(payslip.total_allowances)}</span>
@@ -187,6 +201,13 @@ export default function PayslipDetailPage() {
                                 <span className="text-muted-foreground">Total Employer Cost</span>
                                 <span className="text-foreground">{fmt(payslip.total_employer_cost)}</span>
                             </div>
+                        </div>
+                    )}
+
+                    {payslip.bonus_amount > 0 && (
+                        <div className="flex justify-between border-t pt-3 text-sm">
+                            <span className="text-muted-foreground">Bonus (added after deductions)</span>
+                            <span className="text-success font-medium">+{fmt(payslip.bonus_amount)}</span>
                         </div>
                     )}
 

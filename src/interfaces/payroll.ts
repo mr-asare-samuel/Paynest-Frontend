@@ -110,11 +110,16 @@ export interface BenefitBandItemCreate {
 }
 
 // ─── Salary structures (per-employee base pay) ─────────────────────────────
+export type WageType = 'salaried' | 'hourly' | 'commission';
+
 export interface SalaryStructure {
     id: number;
     employee_profile_id: number;
     organization_id: number;
     base_amount: number;
+    wage_type: WageType;
+    hourly_rate: number | null;
+    commission_rate: number | null;
     effective_date: string;
     end_date: string | null;
     created_at: string;
@@ -123,6 +128,9 @@ export interface SalaryStructure {
 export interface SalaryStructureCreate {
     employee_profile_id: number;
     base_amount: number;
+    wage_type?: WageType;
+    hourly_rate?: number | null;
+    commission_rate?: number | null;
     effective_date: string;
 }
 
@@ -231,6 +239,7 @@ export interface TaxBreakdownItem {
     mode: TaxConfigMode;
     bearer: TaxBearer;
     amount: number;
+    target?: TaxConfigTarget;
 }
 
 export interface BenefitBreakdownItem {
@@ -260,6 +269,17 @@ export interface Payslip {
     created_at: string;
     organization_name?: string | null;
     organization_logo_url?: string | null;
+    bonus_amount: number;
+    unpaid_leave_days: number;
+    unpaid_leave_deduction: number;
+    wage_type: WageType | null;
+    hours_worked: number | null;
+    commission_base: number | null;
+}
+
+export interface PayslipBonusUpdate {
+    bonus_amount: number;
+    reason?: string;
 }
 
 export interface MyPayslipSummary {
@@ -280,4 +300,20 @@ export interface MyPayslipListResponse {
     total: number;
     skip: number;
     limit: number;
+}
+
+// ─── Payroll history & trends ───────────────────────────────────────────────
+export interface PayrollTrendPoint {
+    period_label: string;
+    period_start: string;
+    period_end: string;
+    total_gross_pay: number;
+    total_net_pay: number;
+    total_employer_cost: number;
+    total_employee_tax: number;
+    employee_count: number;
+}
+
+export interface PayrollTrendsResponse {
+    items: PayrollTrendPoint[];
 }

@@ -17,6 +17,7 @@ import {
     ChevronRight,
     CircleDollarSign,
     CircleUser,
+    Clock,
     CreditCard,
     FileText,
     Home,
@@ -31,7 +32,10 @@ import {
     Settings,
     Settings2,
     ShoppingCart,
+    Store,
     Tag,
+    TrendingUp,
+    Truck,
     UserPlus,
     Users,
     UsersRound,
@@ -143,6 +147,22 @@ const NAV_GROUPS: NavGroup[] = [
         ],
     },
     {
+        label: "Procurement",
+        roles: ["admin", "manager"],
+        items: [
+            { name: "Vendors", href: "/vendors", icon: Store, roles: ["admin", "manager"] },
+            {
+                name: "Purchase Orders",
+                icon: Truck,
+                roles: ["admin", "manager"],
+                subItems: [
+                    { name: "All Purchase Orders", href: "/purchase-orders", icon: Truck, roles: ["admin", "manager"] },
+                    { name: "Create Purchase Order", href: "/purchase-orders/create", icon: PlusCircle, roles: ["admin", "manager"] },
+                ],
+            },
+        ],
+    },
+    {
         label: "Customers",
         roles: ["admin", "manager", "attendant"],
         items: [
@@ -186,6 +206,7 @@ const NAV_GROUPS: NavGroup[] = [
         roles: ["admin"],
         items: [
             { name: "Payroll Runs", href: "/payroll", icon: Banknote, roles: ["admin"] },
+            { name: "Payroll History", href: "/payroll/history", icon: TrendingUp, roles: ["admin"] },
             { name: "Employee Payroll", href: "/payroll/employees", icon: Wallet, roles: ["admin"] },
             { name: "Payroll Settings", href: "/settings/payroll", icon: Calculator, roles: ["admin"] },
         ],
@@ -209,6 +230,7 @@ const NAV_GROUPS: NavGroup[] = [
         roles: ["admin", "manager", "attendant"],
         items: [
             { name: "Shifts & Overtime", href: "/scheduling", icon: CalendarClock, roles: ["admin", "manager", "attendant"] },
+            { name: "Timesheets", href: "/timesheets", icon: Clock, roles: ["admin", "manager", "attendant"] },
             { name: "Overtime Rules", href: "/settings/scheduling", icon: Settings2, roles: ["admin"] },
         ],
     },
@@ -361,16 +383,16 @@ export default function AppShell({
     return (
         <SidebarProvider>
             <Sidebar collapsible="icon">
-                <SidebarHeader>
+                <SidebarHeader className="border-b border-sidebar-border/60 pb-3">
                     <Link
                         href="/dashboard"
-                        className="hover:bg-sidebar-accent flex items-center gap-2 rounded-md p-2 transition-colors group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0"
+                        className="hover:bg-sidebar-accent group/logo flex items-center gap-2.5 rounded-lg p-2 transition-colors duration-(--duration-base) ease-(--ease-standard) group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0"
                     >
-                        <span className="bg-sidebar-primary text-sidebar-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-md group-data-[collapsible=icon]:size-7">
-                            <Wallet className="size-4" />
+                        <span className="bg-sidebar-primary text-sidebar-primary-foreground ring-sidebar-primary/20 flex size-8 shrink-0 items-center justify-center rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.4)] ring-1 transition-transform duration-(--duration-base) ease-(--ease-standard) group-hover/logo:scale-105 group-data-[collapsible=icon]:size-7">
+                            <Wallet className="size-4" strokeWidth={2.25} />
                         </span>
-                        <span className="text-sidebar-foreground truncate text-base font-semibold group-data-[collapsible=icon]:hidden">
-                            Paynest
+                        <span className="text-sidebar-foreground truncate text-base font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+                            Pay<span className="text-sidebar-foreground/60 font-normal">nest</span>
                         </span>
                     </Link>
                 </SidebarHeader>
@@ -395,8 +417,12 @@ export default function AppShell({
                     ))}
                 </SidebarContent>
 
-                <SidebarFooter>
-                    <UserMenu variant="row" align="end" />
+                <SidebarFooter className="border-t border-sidebar-border/60 pt-2">
+                    <UserMenu
+                        variant="row"
+                        align="end"
+                        className="border border-sidebar-border/60 bg-white/[0.04] hover:bg-white/[0.09]"
+                    />
                 </SidebarFooter>
             </Sidebar>
 

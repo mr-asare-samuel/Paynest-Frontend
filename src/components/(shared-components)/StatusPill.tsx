@@ -34,7 +34,9 @@ export type StatusKind =
     | "unpaid"
     | "muted"
     | "draft"
-    | "inactive";
+    | "inactive"
+    | "sent"
+    | "partiallyreceived";
 
 const STATUS_MAP: Record<StatusKind, { tone: Tone; icon: LucideIcon }> = {
     success: { tone: "success", icon: CheckCircle2 },
@@ -52,6 +54,8 @@ const STATUS_MAP: Record<StatusKind, { tone: Tone; icon: LucideIcon }> = {
     info: { tone: "info", icon: Circle },
     initiated: { tone: "info", icon: Circle },
     shipped: { tone: "info", icon: Circle },
+    sent: { tone: "info", icon: Circle },
+    partiallyreceived: { tone: "warning", icon: Clock },
 
     destructive: { tone: "destructive", icon: XCircle },
     failed: { tone: "destructive", icon: XCircle },
