@@ -32,8 +32,10 @@ import {
     Settings,
     Settings2,
     ShoppingCart,
+    Store,
     Tag,
     TrendingUp,
+    Truck,
     UserPlus,
     Users,
     UsersRound,
@@ -140,6 +142,22 @@ const NAV_GROUPS: NavGroup[] = [
                     { name: "All Inventory", href: "/inventory", icon: CreditCard, roles: ["manager", "attendant"] },
                     { name: "Create Inventory", href: "/inventory/create", icon: PlusCircle, roles: ["manager", "attendant"] },
                     { name: "Stock Movements", href: "/stock-movements", icon: ArrowLeftRight, roles: ["manager", "attendant"] },
+                ],
+            },
+        ],
+    },
+    {
+        label: "Procurement",
+        roles: ["admin", "manager"],
+        items: [
+            { name: "Vendors", href: "/vendors", icon: Store, roles: ["admin", "manager"] },
+            {
+                name: "Purchase Orders",
+                icon: Truck,
+                roles: ["admin", "manager"],
+                subItems: [
+                    { name: "All Purchase Orders", href: "/purchase-orders", icon: Truck, roles: ["admin", "manager"] },
+                    { name: "Create Purchase Order", href: "/purchase-orders/create", icon: PlusCircle, roles: ["admin", "manager"] },
                 ],
             },
         ],
