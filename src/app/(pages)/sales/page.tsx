@@ -31,9 +31,13 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { GetProducts } from "@/(api-handlers)/productsHandler";
 import { GetProductCategories } from "@/(api-handlers)/productCategoriesHandler";
+import { GetBundles } from "@/(api-handlers)/bundlesHandler";
 import { ProductResponse } from "@/interfaces/products";
 import { ProductCategoriesResponse } from "@/interfaces/productCategories";
-import { useSalesStore } from "@/(zustand-store)/salesStore";
+import { BundleResponse } from "@/interfaces/bundles";
+import {
+    useSalesStore, type CartItemData, bundleCartKey, cartUnitPrice,
+} from "@/(zustand-store)/salesStore";
 import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/useCurrency";
 import { CategoryItem } from "./components/CategoryItem";
@@ -64,6 +68,8 @@ export default function SalesPage() {
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [isCompletionModalOpen, setIsCompletionModalOpen] = useState(false);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const [bundles, setBundles] = useState<BundleResponse[]>([]);
+    const [catalogMode, setCatalogMode] = useState<"products" | "bundles">("products");
 
     const {
         cart,
@@ -72,6 +78,7 @@ export default function SalesPage() {
         updateCartQuantity,
         removeFromCart,
         addToCart,
+        addBundleToCart,
         paymentMethod,
         setPaymentMethod,
         clearCart,
@@ -80,7 +87,7 @@ export default function SalesPage() {
     const cartItems = Object.values(cart);
     const itemCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
     const subTotal = cartItems.reduce(
-        (acc, item) => acc + (item.product?.selling_price || 0) * item.quantity,
+        (acc, item) => acc + cartUnitPrice(item) * item.quantity,
         0,
     );
     const tax = subTotal * 0.04;
@@ -98,12 +105,14 @@ export default function SalesPage() {
     useEffect(() => {
         async function fetchData() {
             try {
-                const [productsData, categoriesData] = await Promise.all([
+                const [productsData, categoriesData, bundlesData] = await Promise.all([
                     GetProducts(),
                     GetProductCategories(),
+                    GetBundles().catch(() => []),
                 ]);
                 setProducts(productsData);
                 setCategories(categoriesData);
+                setBundles(bundlesData.filter((b) => b.is_active));
             } catch (error) {
                 console.error("Failed to fetch data:", error);
                 toast.error("Failed to load products and categories");
@@ -261,12 +270,13 @@ export default function SalesPage() {
                 <div className="flex items-end justify-between gap-4 px-4 pt-5 pb-3 lg:px-6 lg:pt-6 lg:pb-4">
                     <div className="min-w-0">
                         <h2 className="text-foreground truncate text-xl font-semibold tracking-tight">
-                            {sectionTitle}
+                            {catalogMode === "bundles" ? "Bundles" : sectionTitle}
                         </h2>
                         <p className="text-muted-foreground mt-0.5 text-xs">
-                            {filteredProducts.length}{" "}
-                            {filteredProducts.length === 1 ? "item" : "items"} available
-                            {searchQuery && (
+                            {catalogMode === "bundles"
+                                ? `${bundles.length} ${bundles.length === 1 ? "bundle" : "bundles"}`
+                                : `${filteredProducts.length} ${filteredProducts.length === 1 ? "item" : "items"} available`}
+                            {catalogMode === "products" && searchQuery && (
                                 <>
                                     {" · "}
                                     <span className="text-foreground font-medium">
@@ -276,15 +286,60 @@ export default function SalesPage() {
                             )}
                         </p>
                     </div>
+                    {bundles.length > 0 && (
+                        <ToggleGroup
+                            type="single"
+                            value={catalogMode}
+                            onValueChange={(v) => v && setCatalogMode(v as "products" | "bundles")}
+                            variant="outline"
+                            size="sm"
+                        >
+                            <ToggleGroupItem value="products">Products</ToggleGroupItem>
+                            <ToggleGroupItem value="bundles">
+                                <Sparkles className="mr-1 size-3.5" /> Bundles
+                            </ToggleGroupItem>
+                        </ToggleGroup>
+                    )}
                 </div>
 
-                {/* Product grid */}
+                {/* Product / bundle grid */}
                 <div className="flex-1 px-4 pb-10 lg:px-6 lg:pb-12">
                     {isLoading ? (
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                             {Array.from({ length: 10 }).map((_, i) => (
                                 <Skeleton key={i} className="h-60 rounded-2xl" />
                             ))}
+                        </div>
+                    ) : catalogMode === "bundles" ? (
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                            {bundles.map((b) => {
+                                const qty = cart[bundleCartKey(b.id)]?.quantity || 0;
+                                return (
+                                    <button
+                                        key={b.id}
+                                        type="button"
+                                        onClick={() => addBundleToCart(b)}
+                                        className={cn(
+                                            "group border-border hover:border-primary/50 relative flex flex-col rounded-2xl border p-4 text-left transition-all",
+                                            qty > 0 && "border-primary bg-primary/5",
+                                        )}
+                                    >
+                                        <span className="bg-primary/10 text-primary mb-2 inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                                            <Sparkles className="size-3" /> BUNDLE
+                                        </span>
+                                        <span className="text-foreground line-clamp-2 text-sm font-semibold">{b.name}</span>
+                                        <span className="text-muted-foreground mt-1 line-clamp-2 text-xs">
+                                            {b.items.map((i) => `${i.quantity}× ${i.product_name ?? ""}`).join(", ")}
+                                        </span>
+                                        <span className="text-primary mt-auto pt-3 text-lg font-bold">{fmt(b.bundle_price)}</span>
+                                        {qty > 0 && (
+                                            <span className="bg-primary text-primary-foreground absolute top-3 right-3 flex size-6 items-center justify-center rounded-full text-xs font-bold">
+                                                {qty}
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
                         </div>
                     ) : filteredProducts.length > 0 ? (
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
@@ -418,14 +473,8 @@ export default function SalesPage() {
     );
 }
 
-interface SalesCartItem {
-    product: ProductResponse;
-    quantity: number;
-    specialInstructions?: string;
-}
-
 interface CartPanelProps {
-    cartItems: SalesCartItem[];
+    cartItems: CartItemData[];
     itemCount: number;
     isOrderMode: boolean;
     toggleOrderMode: () => void;
@@ -549,18 +598,22 @@ function CartPanel({
                             </button>
                         </div>
                         <div className="flex flex-col gap-2 px-3 pt-1 pb-4">
-                            {cartItems.map((item) => (
-                                <CartItem
-                                    key={item.product.id}
-                                    id={item.product.id}
-                                    name={item.product.name}
-                                    price={item.product.selling_price}
-                                    quantity={item.quantity}
-                                    imageUrl={item.product.image_url ?? undefined}
-                                    onUpdateQuantity={updateCartQuantity}
-                                    onRemove={removeFromCart}
-                                />
-                            ))}
+                            {cartItems.map((item) => {
+                                const key = item.bundle ? bundleCartKey(item.bundle.id) : item.product!.id;
+                                return (
+                                    <CartItem
+                                        key={key}
+                                        id={key}
+                                        name={item.bundle ? `${item.bundle.name} (bundle)` : item.product!.name}
+                                        price={cartUnitPrice(item)}
+                                        quantity={item.quantity}
+                                        sku={item.bundle ? (item.bundle.sku ?? undefined) : undefined}
+                                        imageUrl={item.bundle ? undefined : (item.product!.image_url ?? undefined)}
+                                        onUpdateQuantity={updateCartQuantity}
+                                        onRemove={removeFromCart}
+                                    />
+                                );
+                            })}
                         </div>
                     </>
                 ) : (

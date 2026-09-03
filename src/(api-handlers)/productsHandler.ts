@@ -1,4 +1,5 @@
 import { ProductRequest, ProductResponse } from "@/interfaces/products";
+import type { BulkImportResult } from "@/interfaces/inventoryTracking";
 import apiClient from "@/lib/apiClient";
 
 
@@ -75,3 +76,48 @@ export const GetProductsByCategory = async (category_id: number): Promise<Produc
         throw error;
     }
 }
+
+// ── Phase 2.2: barcode + bulk import ──────────────────────────────────────────
+
+/** Fetch the product's barcode as an SVG object URL (endpoint requires auth, so
+ *  we can't point an <img src> straight at it). Caller must URL.revokeObjectURL. */
+export const GetProductBarcodeSvgUrl = async (
+    productId: number,
+    opts: { symbology?: string; text?: boolean } = {},
+): Promise<string> => {
+    const response = await apiClient.get(`/products/${productId}/barcode.svg`, {
+        params: { symbology: opts.symbology, text: opts.text },
+        responseType: "blob",
+    });
+    return URL.createObjectURL(new Blob([response.data], { type: "image/svg+xml" }));
+};
+
+export const GenerateProductBarcode = async (
+    productId: number,
+    overwrite = false,
+): Promise<ProductResponse> => {
+    const response = await apiClient.post(
+        `/products/${productId}/barcode/generate`,
+        null,
+        { params: { overwrite } },
+    );
+    return response.data;
+};
+
+export const BulkImportProducts = async (
+    file: File,
+    opts: { shop_id?: number; create_missing_categories?: boolean } = {},
+): Promise<BulkImportResult> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await apiClient.post(`/products/bulk-import`, formData, {
+        params: opts,
+        headers: { "Content-Type": "multipart/form-data" },
+    });
+    return response.data;
+};
+
+export const DownloadProductImportTemplate = async (): Promise<Blob> => {
+    const response = await apiClient.get(`/products/bulk-import/template`, { responseType: "blob" });
+    return new Blob([response.data], { type: "text/csv" });
+};

@@ -57,7 +57,8 @@ export default function ExpenseCategoriesPage() {
     const { user } = useAuthStore();
     const router = useRouter();
     const role = (user?.role || "attendant").toLowerCase();
-    const isAllowed = role === "manager" || role === "admin" || role === "superadmin";
+    // Expense categories are organization-scoped; superadmins have no organization.
+    const isAllowed = role === "manager" || role === "admin";
 
     const [categories, setCategories]       = useState<ExpenseCategoryResponse[]>([]);
     const [shops, setShops]                 = useState<OrganizationShopResponse[]>([]);

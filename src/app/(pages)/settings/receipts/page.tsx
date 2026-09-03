@@ -25,7 +25,9 @@ export default function ReceiptSettingsPage() {
     const { user } = useAuthStore();
     const router = useRouter();
     const role = (user?.role || '').toLowerCase();
-    const isAllowed = role === 'admin' || role === 'superadmin';
+    // Receipt config is organization-scoped. Superadmins have no organization,
+    // so the backend rejects GET /receipts/config for them with a 400.
+    const isAllowed = role === 'admin';
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);

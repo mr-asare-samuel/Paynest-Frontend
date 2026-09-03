@@ -3,16 +3,20 @@ export type OrderStatus = "initiated" | "preparing" | "ready" | "transported" | 
 export type PaymentMethod = "bank transfer" | "mobile transfer" | "cash";
 export type PaymentStatus = "paid" | "unpaid" | "failed";
 
+export interface OrderItemInput {
+    product_id?: number,
+    bundle_id?: number,
+    quantity: number,
+    notes?: string,
+    serial_numbers?: string[],
+}
+
 export interface WalkInsRequest {
     shop_id: number,
     order_type: OrderType,
     order_status: OrderStatus,
-    customer_id: null,
-    items: {
-        product_id: number,
-        quantity: number,
-        notes: string
-    }[],
+    customer_id: number | null,
+    items: OrderItemInput[],
     payment: {
         method: PaymentMethod,
         status: PaymentStatus,
@@ -20,6 +24,7 @@ export interface WalkInsRequest {
     },
     delivery_amount: number,
     discount_amount?: number,
+    promo_code?: string | null,
     is_delivered: boolean,
     delivery_address: string | null,
     actual_delivery_date: null,
@@ -32,10 +37,7 @@ export interface OrderRequest {
     order_type: OrderType,
     order_status: OrderStatus,
     customer_id: number,
-    items: {
-        product_id: number,
-        quantity: number
-    }[],
+    items: OrderItemInput[],
     payment?: {
         method: PaymentMethod,
         status: PaymentStatus,
@@ -43,6 +45,7 @@ export interface OrderRequest {
     },
     delivery_amount: number,
     discount_amount?: number,
+    promo_code?: string | null,
     is_delivered: boolean,
     delivery_address: string | null,
     actual_delivery_date: string,
