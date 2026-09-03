@@ -12,7 +12,10 @@ import {
 } from 'lucide-react';
 import {
     GetProducts, CreateProduct, UpdateProdctDetails, DeleteProduct, uploadProductImage,
+    GenerateProductBarcode, GetProductBarcodeSvgUrl,
 } from '@/(api-handlers)/productsHandler';
+import { GetVendors } from '@/(api-handlers)/vendorsHandler';
+import { VendorResponse } from '@/interfaces/vendors';
 import { useRouter } from 'next/navigation';
 import { GetProductCategories } from '@/(api-handlers)/productCategoriesHandler';
 import { getOrganizationShops } from '@/(api-handlers)/organizationShopsHandler';
@@ -60,6 +63,9 @@ interface ProductFormValues {
     tax_rate: string;
     is_taxable: boolean;
     is_active: boolean;
+    default_vendor_id: string;
+    track_serial: boolean;
+    track_batch: boolean;
 }
 
 function marginColor(pct: number) {
@@ -101,10 +107,14 @@ export default function ProductsPage() {
     const { user } = useAuthStore();
     const [shops, setShops] = useState<OrganizationShopResponse[]>([]);
     const [selectedShopId, setSelectedShopId] = useState('all');
+    const [vendors, setVendors] = useState<VendorResponse[]>([]);
+    const [barcodeSvg, setBarcodeSvg] = useState<string>('');
+    const [generatingBarcode, setGeneratingBarcode] = useState(false);
     const isAdmin = ['admin', 'superadmin'].includes((user?.role ?? '').toLowerCase());
+    const isManagerPlus = isAdmin || (user?.role ?? '').toLowerCase() === 'manager';
 
     const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm<ProductFormValues>({
-        defaultValues: { is_active: true, is_taxable: true, tax_rate: '0' },
+        defaultValues: { is_active: true, is_taxable: true, tax_rate: '0', default_vendor_id: '', track_serial: false, track_batch: false },
     });
     const costPrice = watch('cost_price');
     const sellingPrice = watch('selling_price');
@@ -114,6 +124,23 @@ export default function ProductsPage() {
         if (!isAdmin) return;
         getOrganizationShops().then(setShops).catch(console.error);
     }, [isAdmin]);
+
+    useEffect(() => {
+        if (!isManagerPlus) return;
+        GetVendors({ is_active: true, limit: 200 }).then((r) => setVendors(r.items)).catch(() => { });
+    }, [isManagerPlus]);
+
+    // Load the barcode preview whenever the edit dialog opens on a product that has one.
+    useEffect(() => {
+        let revoked = '';
+        setBarcodeSvg('');
+        if (isModalOpen && editingProduct?.barcode) {
+            GetProductBarcodeSvgUrl(editingProduct.id)
+                .then((url) => { revoked = url; setBarcodeSvg(url); })
+                .catch(() => { });
+        }
+        return () => { if (revoked) URL.revokeObjectURL(revoked); };
+    }, [isModalOpen, editingProduct]);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -147,9 +174,15 @@ export default function ProductsPage() {
                 tax_rate: product.tax_rate?.toString() ?? '0',
                 is_taxable: product.is_taxable,
                 is_active: product.is_active,
+                default_vendor_id: product.default_vendor_id ? String(product.default_vendor_id) : '',
+                track_serial: product.track_serial ?? false,
+                track_batch: product.track_batch ?? false,
             });
         } else {
-            reset({ is_active: true, is_taxable: true, tax_rate: '0' });
+            reset({
+                is_active: true, is_taxable: true, tax_rate: '0',
+                default_vendor_id: '', track_serial: false, track_batch: false,
+            });
         }
         setIsModalOpen(true);
     };
@@ -181,6 +214,25 @@ export default function ProductsPage() {
         }
     };
 
+    const handleGenerateBarcode = async () => {
+        if (!editingProduct) return;
+        setGeneratingBarcode(true);
+        try {
+            const overwrite = !!editingProduct.barcode;
+            const updated = await GenerateProductBarcode(editingProduct.id, overwrite);
+            setValue('barcode', updated.barcode);
+            setEditingProduct(updated);
+            const url = await GetProductBarcodeSvgUrl(updated.id).catch(() => '');
+            setBarcodeSvg(url);
+            toast.success('Barcode generated');
+            fetchData();
+        } catch (error) {
+            handleErrorMessage(error, 'Failed to generate barcode');
+        } finally {
+            setGeneratingBarcode(false);
+        }
+    };
+
     const onSubmit = async (values: ProductFormValues) => {
         setSubmitting(true);
         try {
@@ -198,6 +250,9 @@ export default function ProductsPage() {
                 is_taxable: values.is_taxable,
                 is_active: values.is_active,
                 image_url: imageUrl || undefined,
+                default_vendor_id: values.default_vendor_id ? Number(values.default_vendor_id) : null,
+                track_serial: values.track_serial,
+                track_batch: values.track_batch,
             };
             if (editingProduct) {
                 await UpdateProdctDetails(editingProduct.id, productData);
@@ -672,6 +727,72 @@ export default function ProductsPage() {
                                 <div className="space-y-1.5">
                                     <Label>Barcode</Label>
                                     <Input className="h-9 font-mono" placeholder="EAN / UPC" {...register('barcode')} />
+                                </div>
+                            </div>
+
+                            {editingProduct && (
+                                <div className="bg-muted/40 flex flex-wrap items-center gap-4 rounded-xl border p-4">
+                                    <div className="bg-background flex h-16 min-w-[160px] items-center justify-center rounded-lg border px-3">
+                                        {barcodeSvg ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={barcodeSvg} alt="Barcode" className="max-h-14" />
+                                        ) : (
+                                            <span className="text-muted-foreground text-xs">No barcode</span>
+                                        )}
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-foreground text-sm font-semibold">Barcode label</p>
+                                        <p className="text-muted-foreground text-xs">
+                                            Generate a unique EAN-13, or type your manufacturer barcode above.
+                                        </p>
+                                    </div>
+                                    <Button type="button" variant="outline" size="sm" onClick={handleGenerateBarcode} disabled={generatingBarcode}>
+                                        {generatingBarcode
+                                            ? <Loader2 className="mr-1.5 size-4 animate-spin" />
+                                            : <Barcode className="mr-1.5 size-4" />}
+                                        {editingProduct.barcode ? 'Regenerate' : 'Generate'}
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Supply & tracking */}
+                        <div className="space-y-4">
+                            <p className="text-muted-foreground flex items-center gap-2 text-xs font-semibold uppercase tracking-wider">
+                                <Boxes className="size-3.5" /> Supply & tracking
+                            </p>
+                            <div className="space-y-1.5">
+                                <Label>Default vendor <span className="text-muted-foreground text-xs">(for auto-reorder)</span></Label>
+                                <Controller
+                                    control={control}
+                                    name="default_vendor_id"
+                                    render={({ field }) => (
+                                        <Select value={field.value || 'none'} onValueChange={(v) => field.onChange(v === 'none' ? '' : v)}>
+                                            <SelectTrigger className="h-9"><SelectValue placeholder="No default vendor" /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">No default vendor</SelectItem>
+                                                {vendors.map((v) => <SelectItem key={v.id} value={String(v.id)}>{v.name}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    )}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-muted/40 flex items-center justify-between rounded-xl border p-4">
+                                    <div>
+                                        <p className="text-foreground text-sm font-semibold">Serial tracking</p>
+                                        <p className="text-muted-foreground text-xs">Capture a serial per unit at sale</p>
+                                    </div>
+                                    <Controller control={control} name="track_serial"
+                                        render={({ field }) => <Switch checked={field.value} onCheckedChange={field.onChange} />} />
+                                </div>
+                                <div className="bg-muted/40 flex items-center justify-between rounded-xl border p-4">
+                                    <div>
+                                        <p className="text-foreground text-sm font-semibold">Batch / expiry</p>
+                                        <p className="text-muted-foreground text-xs">Deduct stock FEFO from batches</p>
+                                    </div>
+                                    <Controller control={control} name="track_batch"
+                                        render={({ field }) => <Switch checked={field.value} onCheckedChange={field.onChange} />} />
                                 </div>
                             </div>
                         </div>

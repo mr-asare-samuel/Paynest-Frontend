@@ -14,6 +14,9 @@ export interface ProductRequest {
     is_taxable: boolean,
     is_active: boolean,
     image_url?: string,
+    default_vendor_id?: number | null,
+    track_serial?: boolean,
+    track_batch?: boolean,
 }
 
 export interface ProductResponse {
@@ -33,6 +36,9 @@ export interface ProductResponse {
     organization_id: number,
     shop_id: number,
     image_url?: string,
+    default_vendor_id?: number | null,
+    track_serial?: boolean,
+    track_batch?: boolean,
     stock_quantity: number,
     inventory?: InventoryResponse,
     category?: string,
