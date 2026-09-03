@@ -29,6 +29,8 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
+import { DatePicker } from "antd";
+import dayjs from "dayjs";
 import { toast } from "sonner";
 import PageHeader from "@/components/(shared-components)/PageHeader";
 import { cn } from "@/lib/utils";
@@ -72,8 +74,6 @@ const blank: FormState = {
 };
 
 const numOrNull = (s: string): number | null => (s.trim() === "" ? null : Number(s));
-const toLocalInput = (iso: string | null) => (iso ? iso.slice(0, 16) : "");
-const toIso = (local: string) => (local ? new Date(local).toISOString() : null);
 
 export default function PromoCodesPage() {
     const { user } = useAuthStore();
@@ -142,8 +142,8 @@ export default function PromoCodesPage() {
             max_discount_amount: row.max_discount_amount != null ? String(row.max_discount_amount) : "",
             usage_limit: row.usage_limit != null ? String(row.usage_limit) : "",
             per_customer_limit: row.per_customer_limit != null ? String(row.per_customer_limit) : "",
-            starts_at: toLocalInput(row.starts_at),
-            ends_at: toLocalInput(row.ends_at),
+            starts_at: row.starts_at ?? "",
+            ends_at: row.ends_at ?? "",
             is_active: row.is_active,
         });
         setDialogOpen(true);
@@ -169,8 +169,8 @@ export default function PromoCodesPage() {
             max_discount_amount: numOrNull(form.max_discount_amount),
             usage_limit: numOrNull(form.usage_limit),
             per_customer_limit: numOrNull(form.per_customer_limit),
-            starts_at: toIso(form.starts_at),
-            ends_at: toIso(form.ends_at),
+            starts_at: form.starts_at || null,
+            ends_at: form.ends_at || null,
             is_active: form.is_active,
         };
 
@@ -456,11 +456,23 @@ export default function PromoCodesPage() {
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1.5">
                                 <Label>Starts</Label>
-                                <Input type="datetime-local" value={form.starts_at} onChange={(e) => set("starts_at", e.target.value)} />
+                                <DatePicker
+                                    showTime
+                                    className="w-full"
+                                    format="DD MMM YYYY HH:mm"
+                                    value={form.starts_at ? dayjs(form.starts_at) : null}
+                                    onChange={(d) => set("starts_at", d ? d.toISOString() : "")}
+                                />
                             </div>
                             <div className="space-y-1.5">
                                 <Label>Ends</Label>
-                                <Input type="datetime-local" value={form.ends_at} onChange={(e) => set("ends_at", e.target.value)} />
+                                <DatePicker
+                                    showTime
+                                    className="w-full"
+                                    format="DD MMM YYYY HH:mm"
+                                    value={form.ends_at ? dayjs(form.ends_at) : null}
+                                    onChange={(d) => set("ends_at", d ? d.toISOString() : "")}
+                                />
                             </div>
                         </div>
                     </div>

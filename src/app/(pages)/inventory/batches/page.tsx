@@ -19,6 +19,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
+import { DatePicker } from "antd";
+import dayjs from "dayjs";
 import { toast } from "sonner";
 import PageHeader from "@/components/(shared-components)/PageHeader";
 import { cn } from "@/lib/utils";
@@ -275,12 +277,20 @@ export default function BatchesPage() {
                             </div>
                             <div className="space-y-1.5">
                                 <Label>Expiry date</Label>
-                                <Input type="date" value={f.expiry_date} onChange={(e) => setF({ ...f, expiry_date: e.target.value })} />
+                                <DatePicker
+                                    className="w-full" format="DD MMM YYYY"
+                                    value={f.expiry_date ? dayjs(f.expiry_date) : null}
+                                    onChange={(d) => setF({ ...f, expiry_date: d ? d.format("YYYY-MM-DD") : "" })}
+                                />
                             </div>
                         </div>
                         <div className="space-y-1.5">
                             <Label>Received date</Label>
-                            <Input type="date" value={f.received_date} onChange={(e) => setF({ ...f, received_date: e.target.value })} />
+                            <DatePicker
+                                className="w-full" format="DD MMM YYYY"
+                                value={f.received_date ? dayjs(f.received_date) : null}
+                                onChange={(d) => setF({ ...f, received_date: d ? d.format("YYYY-MM-DD") : "" })}
+                            />
                         </div>
                     </div>
                     <DialogFooter>
