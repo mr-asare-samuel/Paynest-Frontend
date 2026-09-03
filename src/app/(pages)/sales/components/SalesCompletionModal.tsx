@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
     Dialog,
     DialogContent,
@@ -23,12 +23,14 @@ import {
     ToggleGroup,
     ToggleGroupItem,
 } from "@/components/ui/toggle-group";
-import { useSalesStore } from "@/(zustand-store)/salesStore";
+import { useSalesStore, cartUnitPrice } from "@/(zustand-store)/salesStore";
 import { useAuthStore } from "@/(zustand-store)/authStore";
 import { CreateWalkIns } from "@/(api-handlers)/orders_walkinsHandler";
 import { GetAllCustomers } from "@/(api-handlers)/customersHandler";
+import { ValidatePromoCode } from "@/(api-handlers)/promoCodesHandler";
 import { CustomerResponse } from "@/interfaces/customers";
-import { OrderRequest, WalkInsRequest } from "@/interfaces/orders_walkins";
+import { OrderRequest, WalkInsRequest, OrderItemInput } from "@/interfaces/orders_walkins";
+import { PromoValidateResponse } from "@/interfaces/promoCodes";
 import { toast } from "sonner";
 import {
     CheckCircle2,
@@ -44,6 +46,8 @@ import {
     Usb,
     Download,
     X,
+    TicketPercent,
+    Barcode,
 } from "lucide-react";
 import { handleErrorMessage } from "@/lib/handleErrorMessage";
 import { printerService } from "@/lib/printerService";
@@ -109,8 +113,47 @@ export function SalesCompletionModal({
         null,
     );
     const [printerConnected, setPrinterConnected] = useState(false);
+    const [promoCode, setPromoCode] = useState("");
+    const [promoChecking, setPromoChecking] = useState(false);
+    const [promoResult, setPromoResult] = useState<PromoValidateResponse | null>(null);
+    const [serials, setSerials] = useState<Record<number, string[]>>({});
 
-    const finalTotal = Math.max(0, total - discountAmount);
+    // Cart lines that need a serial per unit captured before checkout.
+    const serialLines = useMemo(
+        () => Object.entries(cart)
+            .filter(([, item]) => item.product?.track_serial)
+            .map(([key, item]) => ({ key: Number(key), item })),
+        [cart],
+    );
+
+    const promoDiscount = promoResult?.valid ? promoResult.discount_amount : 0;
+    const finalTotal = Math.max(0, total - discountAmount - promoDiscount);
+
+    const checkPromo = async () => {
+        const code = promoCode.trim();
+        if (!code || !user?.employee_profile?.shop_id) return;
+        setPromoChecking(true);
+        try {
+            const res = await ValidatePromoCode({
+                code,
+                shop_id: user.employee_profile.shop_id,
+                customer_id: isOrderMode ? selectedCustomerId : undefined,
+                items: Object.values(cart).map((item) =>
+                    item.bundle
+                        ? { bundle_id: item.bundle.id, quantity: item.quantity }
+                        : { product_id: item.product!.id, quantity: item.quantity },
+                ),
+            });
+            setPromoResult(res);
+            if (res.valid) toast.success(`Promo applied — ${fmt(res.discount_amount)} off`);
+            else toast.error(res.reason || "Promo code can't be applied");
+        } catch (e) {
+            handleErrorMessage(e, "Couldn't check that promo code");
+            setPromoResult(null);
+        } finally {
+            setPromoChecking(false);
+        }
+    };
 
     useEffect(() => {
         if (isOpen && isOrderMode) {
@@ -136,6 +179,9 @@ export function SalesCompletionModal({
             setDiscountAmount(0);
             setSelectedCustomerId(null);
             setDeliveryAddress("");
+            setPromoCode("");
+            setPromoResult(null);
+            setSerials({});
         }
     }, [isOpen]);
 
@@ -156,20 +202,46 @@ export function SalesCompletionModal({
             return;
         }
 
-        const receiptItems: ReceiptItem[] = Object.values(cart).map((item) => ({
-            name: item.product.name,
-            quantity: item.quantity,
-            unitPrice: item.product.selling_price,
-            lineTotal: item.product.selling_price * item.quantity,
-        }));
+        // Serial-tracked lines need exactly `quantity` serial numbers.
+        for (const { key, item } of serialLines) {
+            const captured = (serials[key] || []).map((s) => s.trim()).filter(Boolean);
+            if (captured.length !== item.quantity) {
+                toast.error(`Enter ${item.quantity} serial number(s) for ${item.product!.name}`);
+                return;
+            }
+        }
+
+        const receiptItems: ReceiptItem[] = Object.values(cart).map((item) => {
+            const unit = cartUnitPrice(item);
+            return {
+                name: item.bundle ? `${item.bundle.name} (bundle)` : item.product!.name,
+                quantity: item.quantity,
+                unitPrice: unit,
+                lineTotal: unit * item.quantity,
+            };
+        });
 
         setIsSubmitting(true);
         try {
-            const items = Object.values(cart).map((item) => ({
-                product_id: item.product.id,
-                quantity: item.quantity,
-                notes: item.specialInstructions || "",
-            }));
+            const items: OrderItemInput[] = Object.entries(cart).map(([keyStr, item]) => {
+                if (item.bundle) {
+                    return {
+                        bundle_id: item.bundle.id,
+                        quantity: item.quantity,
+                        notes: item.specialInstructions || undefined,
+                    };
+                }
+                const key = Number(keyStr);
+                return {
+                    product_id: item.product!.id,
+                    quantity: item.quantity,
+                    notes: item.specialInstructions || undefined,
+                    ...(item.product!.track_serial
+                        ? { serial_numbers: (serials[key] || []).map((s) => s.trim()).filter(Boolean) }
+                        : {}),
+                };
+            });
+            const appliedPromo = promoResult?.valid ? promoCode.trim() : undefined;
             const payment = {
                 method: paymentMethod,
                 status: "paid" as const,
@@ -182,13 +254,11 @@ export function SalesCompletionModal({
                     order_type: "sale",
                     order_status: "initiated",
                     customer_id: selectedCustomerId!,
-                    items: items.map(({ product_id, quantity }) => ({
-                        product_id,
-                        quantity,
-                    })),
+                    items,
                     // No payment — orders are paid later via "Confirm Payment" on the orders page
                     delivery_amount: 0,
                     discount_amount: discountAmount,
+                    promo_code: appliedPromo,
                     is_delivered: false,
                     delivery_address: deliveryAddress || null,
                     actual_delivery_date: new Date().toISOString(),
@@ -205,6 +275,7 @@ export function SalesCompletionModal({
                     payment,
                     delivery_amount: 0,
                     discount_amount: discountAmount,
+                    promo_code: appliedPromo,
                     is_delivered: true,
                     delivery_address: null,
                     actual_delivery_date: null,
@@ -218,7 +289,7 @@ export function SalesCompletionModal({
                 items: receiptItems,
                 subtotal: subTotal,
                 tax,
-                discount: discountAmount,
+                discount: discountAmount + promoDiscount,
                 total: finalTotal,
                 paymentMethod,
                 isOrder: isOrderMode,
@@ -607,6 +678,12 @@ export function SalesCompletionModal({
                                     />
                                 </div>
                             </div>
+                            {promoDiscount > 0 && (
+                                <div className="text-success flex justify-between">
+                                    <span>Promo ({promoCode.trim().toUpperCase()})</span>
+                                    <span className="num-tabular">−{fmt(promoDiscount)}</span>
+                                </div>
+                            )}
                         </div>
 
                         <Separator />
@@ -620,6 +697,63 @@ export function SalesCompletionModal({
                             </span>
                         </div>
                     </div>
+
+                    {/* Promo code */}
+                    <div className="flex flex-col gap-2">
+                        <Label className="text-foreground flex items-center gap-1.5 text-sm font-medium">
+                            <TicketPercent className="size-3.5" /> Promo code
+                        </Label>
+                        <div className="flex gap-2">
+                            <Input
+                                value={promoCode}
+                                onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoResult(null); }}
+                                placeholder="Enter code"
+                                className="h-9 font-mono uppercase"
+                            />
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="h-9 shrink-0"
+                                onClick={checkPromo}
+                                disabled={promoChecking || !promoCode.trim()}
+                            >
+                                {promoChecking ? <Loader2 className="size-4 animate-spin" /> : "Apply"}
+                            </Button>
+                        </div>
+                        {promoResult && (
+                            <p className={promoResult.valid ? "text-success text-xs" : "text-destructive text-xs"}>
+                                {promoResult.valid
+                                    ? `Applied — ${fmt(promoResult.discount_amount)} off`
+                                    : promoResult.reason || "Not applicable"}
+                            </p>
+                        )}
+                    </div>
+
+                    {/* Serial capture for serialised products */}
+                    {serialLines.length > 0 && (
+                        <div className="flex flex-col gap-3">
+                            {serialLines.map(({ key, item }) => (
+                                <div key={key} className="border-border flex flex-col gap-2 rounded-lg border p-3">
+                                    <Label className="text-foreground flex items-center gap-1.5 text-sm font-medium">
+                                        <Barcode className="size-3.5" /> {item.product!.name} — serials ({item.quantity})
+                                    </Label>
+                                    {Array.from({ length: item.quantity }).map((_, i) => (
+                                        <Input
+                                            key={i}
+                                            value={serials[key]?.[i] ?? ""}
+                                            onChange={(e) => {
+                                                const next = [...(serials[key] ?? [])];
+                                                next[i] = e.target.value;
+                                                setSerials((s) => ({ ...s, [key]: next }));
+                                            }}
+                                            placeholder={`Serial #${i + 1}`}
+                                            className="h-8 font-mono text-sm"
+                                        />
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
+                    )}
 
                     {/* Customer (order mode only) */}
                     {isOrderMode && (

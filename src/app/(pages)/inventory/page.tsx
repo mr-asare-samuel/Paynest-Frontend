@@ -181,7 +181,7 @@ export default function InventoryPage() {
         try {
             await UpdateInventory(editTarget.id, {
                 minimum_stock: Number(editForm.minimum_stock),
-                maximum_stock: editForm.maximum_stock !== '' ? Number(editForm.maximum_stock) : undefined as any,
+                maximum_stock: editForm.maximum_stock !== '' ? Number(editForm.maximum_stock) : undefined,
                 reorder_point: Number(editForm.reorder_point),
                 reorder_quantity: Number(editForm.reorder_quantity),
                 unit_of_measurement: editForm.unit_of_measurement,
