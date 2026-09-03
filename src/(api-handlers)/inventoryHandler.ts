@@ -1,4 +1,5 @@
 import { AdjustInventoryStockRequest, CreateInventoryRequest, InventoryResponse, InventoryStats, UpdateInventoryRequest } from "@/interfaces/inventory";
+import type { BulkImportResult } from "@/interfaces/inventoryTracking";
 import apiClient from "@/lib/apiClient";
 
 
@@ -82,3 +83,23 @@ export const AdjustInventoryStock = async (inventory_id: number, inventory_data:
         throw error;
     }
 }
+
+// ── Phase 2.2: bulk stock-level import ──────────────────────────────────────
+
+export const BulkImportInventory = async (
+    file: File,
+    opts: { shop_id?: number } = {},
+): Promise<BulkImportResult> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await apiClient.post(`/inventory/bulk-import`, formData, {
+        params: opts,
+        headers: { "Content-Type": "multipart/form-data" },
+    });
+    return response.data;
+};
+
+export const DownloadInventoryImportTemplate = async (): Promise<Blob> => {
+    const response = await apiClient.get(`/inventory/bulk-import/template`, { responseType: "blob" });
+    return new Blob([response.data], { type: "text/csv" });
+};

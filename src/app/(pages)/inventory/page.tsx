@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-    Plus, Search, RefreshCcw,
+    Plus, Search, RefreshCcw, FileUp,
     Package, AlertTriangle, XCircle, DollarSign, Building2,
     TrendingUp, Loader2, Pencil, MoreVertical,
 } from 'lucide-react';
@@ -10,7 +10,11 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import PageHeader from '@/components/(shared-components)/PageHeader';
 import { StatusPill } from '@/components/(shared-components)/StatusPill';
-import { GetAllInventory, GetInventoryStatistics, AdjustInventoryStock, UpdateInventory } from '@/(api-handlers)/inventoryHandler';
+import { BulkImportDialog } from '@/components/(shared-components)/BulkImportDialog';
+import {
+    GetAllInventory, GetInventoryStatistics, AdjustInventoryStock, UpdateInventory,
+    BulkImportInventory, DownloadInventoryImportTemplate,
+} from '@/(api-handlers)/inventoryHandler';
 import { GetTransfers } from '@/(api-handlers)/inventoryTransfersHandler';
 import type { LucideIcon } from 'lucide-react';
 import { InventoryResponse, InventoryStats } from '@/interfaces/inventory';
@@ -177,7 +181,7 @@ export default function InventoryPage() {
         try {
             await UpdateInventory(editTarget.id, {
                 minimum_stock: Number(editForm.minimum_stock),
-                maximum_stock: editForm.maximum_stock !== '' ? Number(editForm.maximum_stock) : undefined as any,
+                maximum_stock: editForm.maximum_stock !== '' ? Number(editForm.maximum_stock) : undefined,
                 reorder_point: Number(editForm.reorder_point),
                 reorder_quantity: Number(editForm.reorder_quantity),
                 unit_of_measurement: editForm.unit_of_measurement,
@@ -206,9 +210,20 @@ export default function InventoryPage() {
                 title="Inventory"
                 description="Monitor stock levels, manage reorders, and optimise inventory performance."
                 actions={
-                    <Button onClick={() => router.push('/inventory/create')}>
-                        <Plus data-icon="inline-start" /> Stock Product
-                    </Button>
+                    <div className="flex gap-2">
+                        <BulkImportDialog
+                            trigger={<Button variant="outline"><FileUp data-icon="inline-start" /> Import CSV</Button>}
+                            title="Bulk import stock levels"
+                            description="Set current stock and reorder settings by SKU or barcode against existing products. Logs a stock movement on any change."
+                            templateFilename="inventory-import-template.csv"
+                            onDownloadTemplate={DownloadInventoryImportTemplate}
+                            onImport={(file) => BulkImportInventory(file, selectedShopId === 'all' ? {} : { shop_id: Number(selectedShopId) })}
+                            onDone={fetchData}
+                        />
+                        <Button onClick={() => router.push('/inventory/create')}>
+                            <Plus data-icon="inline-start" /> Stock Product
+                        </Button>
+                    </div>
                 }
             />
 

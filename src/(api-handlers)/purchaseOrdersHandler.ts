@@ -9,6 +9,7 @@ import {
     UpdatePurchaseOrderRequest,
     UploadPOInvoiceFileResponse,
 } from "@/interfaces/purchaseOrders";
+import type { AutoReorderPreview, AutoReorderRunResult } from "@/interfaces/inventoryTracking";
 
 export const CreatePurchaseOrder = async (data: CreatePurchaseOrderRequest): Promise<PurchaseOrderResponse> => {
     try {
@@ -99,3 +100,19 @@ export const UploadPOInvoiceFile = async (file: File): Promise<UploadPOInvoiceFi
         throw error;
     }
 }
+
+// ── Phase 2.2: auto-reorder ────────────────────────────────────────────────
+
+export const GetAutoReorderPreview = async (
+    params: { shop_id: number; vendor_id?: number },
+): Promise<AutoReorderPreview> => {
+    const response = await apiClient.get(`/purchase-orders/auto-reorder/preview`, { params });
+    return response.data;
+};
+
+export const RunAutoReorder = async (
+    data: { shop_id: number; vendor_id?: number; dry_run?: boolean },
+): Promise<AutoReorderRunResult> => {
+    const response = await apiClient.post(`/purchase-orders/auto-reorder/run`, data);
+    return response.data;
+};
