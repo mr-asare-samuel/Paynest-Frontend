@@ -30,6 +30,8 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
+import { DatePicker, TimePicker } from "antd";
+import dayjs from "dayjs";
 import { toast } from "sonner";
 import PageHeader from "@/components/(shared-components)/PageHeader";
 import { cn } from "@/lib/utils";
@@ -582,15 +584,31 @@ function SchedulesTab({ rows, loading, refs, fmt, reload, pName, cName, sName }:
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1.5"><Label>Start time</Label>
-                                <Input type="time" value={f.start_time} onChange={(e) => setF({ ...f, start_time: e.target.value })} /></div>
+                                <TimePicker
+                                    className="w-full" format="HH:mm" minuteStep={15}
+                                    value={f.start_time ? dayjs(f.start_time, "HH:mm") : null}
+                                    onChange={(t) => setF({ ...f, start_time: t ? t.format("HH:mm") : "" })}
+                                /></div>
                             <div className="space-y-1.5"><Label>End time</Label>
-                                <Input type="time" value={f.end_time} onChange={(e) => setF({ ...f, end_time: e.target.value })} /></div>
+                                <TimePicker
+                                    className="w-full" format="HH:mm" minuteStep={15}
+                                    value={f.end_time ? dayjs(f.end_time, "HH:mm") : null}
+                                    onChange={(t) => setF({ ...f, end_time: t ? t.format("HH:mm") : "" })}
+                                /></div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1.5"><Label>Starts on</Label>
-                                <Input type="date" value={f.starts_on} onChange={(e) => setF({ ...f, starts_on: e.target.value })} /></div>
+                                <DatePicker
+                                    className="w-full" format="DD MMM YYYY"
+                                    value={f.starts_on ? dayjs(f.starts_on) : null}
+                                    onChange={(d) => setF({ ...f, starts_on: d ? d.format("YYYY-MM-DD") : "" })}
+                                /></div>
                             <div className="space-y-1.5"><Label>Ends on</Label>
-                                <Input type="date" value={f.ends_on} onChange={(e) => setF({ ...f, ends_on: e.target.value })} /></div>
+                                <DatePicker
+                                    className="w-full" format="DD MMM YYYY"
+                                    value={f.ends_on ? dayjs(f.ends_on) : null}
+                                    onChange={(d) => setF({ ...f, ends_on: d ? d.format("YYYY-MM-DD") : "" })}
+                                /></div>
                         </div>
                         <ShopField value={f.shop_id} onChange={(v) => setF({ ...f, shop_id: v })} refs={refs} />
                         <div className="flex items-center gap-2">
