@@ -8,12 +8,14 @@ import {
     Barcode, Package, Tag, Layers, FilterX, DollarSign,
     Percent, CheckCircle, XCircle, TrendingUp, TrendingDown,
     Eye, Calendar, Clock, Building2, AlertTriangle,
-    ImagePlus, X, Loader2, ImageOff, Boxes,
+    ImagePlus, X, Loader2, ImageOff, Boxes, FileUp,
 } from 'lucide-react';
 import {
     GetProducts, CreateProduct, UpdateProdctDetails, DeleteProduct, uploadProductImage,
     GenerateProductBarcode, GetProductBarcodeSvgUrl,
+    BulkImportProducts, DownloadProductImportTemplate,
 } from '@/(api-handlers)/productsHandler';
+import { BulkImportDialog } from '@/components/(shared-components)/BulkImportDialog';
 import { GetVendors } from '@/(api-handlers)/vendorsHandler';
 import { VendorResponse } from '@/interfaces/vendors';
 import { useRouter } from 'next/navigation';
@@ -305,6 +307,17 @@ export default function ProductsPage() {
                         <Button variant="outline" size="icon" onClick={fetchData} disabled={loading} aria-label="Refresh products">
                             <RefreshCcw className={cn('size-4', loading && 'animate-spin')} />
                         </Button>
+                        {isManagerPlus && (
+                            <BulkImportDialog
+                                trigger={<Button variant="outline"><FileUp data-icon="inline-start" /> Import CSV</Button>}
+                                title="Bulk import products"
+                                description="Upsert products by SKU. Optional stock columns seed inventory. Bad rows are skipped and reported."
+                                templateFilename="product-import-template.csv"
+                                onDownloadTemplate={DownloadProductImportTemplate}
+                                onImport={(file) => BulkImportProducts(file, selectedShopId === 'all' ? {} : { shop_id: Number(selectedShopId) })}
+                                onDone={fetchData}
+                            />
+                        )}
                         <Button onClick={() => openModal()}>
                             <Plus data-icon="inline-start" /> Add Product
                         </Button>
