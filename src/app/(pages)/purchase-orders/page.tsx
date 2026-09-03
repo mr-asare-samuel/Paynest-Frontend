@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Eye, Filter, Plus, RefreshCcw, ShoppingBag, Truck } from 'lucide-react';
+import { Eye, Filter, Plus, RefreshCcw, ShoppingBag, Truck, Wand2 } from 'lucide-react';
 import PageHeader from '@/components/(shared-components)/PageHeader';
 import Pagination from '@/components/(shared-components)/Pagination';
 import EmptyState from '@/components/(shared-components)/EmptyState';
 import { StatusPill } from '@/components/(shared-components)/StatusPill';
 import PurchaseOrderDetailDialog from '@/components/purchasing/PurchaseOrderDetailDialog';
+import { AutoReorderDialog } from '@/components/purchasing/AutoReorderDialog';
 import { GetPurchaseOrders } from '@/(api-handlers)/purchaseOrdersHandler';
 import { GetVendors } from '@/(api-handlers)/vendorsHandler';
 import { getOrganizationShops } from '@/(api-handlers)/organizationShopsHandler';
@@ -92,6 +93,13 @@ export default function PurchaseOrdersPage() {
                         <Button variant="outline" size="icon" onClick={() => fetchOrders(page)} disabled={loading} aria-label="Refresh purchase orders">
                             <RefreshCcw className={cn('size-4', loading && 'animate-spin')} />
                         </Button>
+                        {canCreate && (
+                            <AutoReorderDialog
+                                shops={shops}
+                                onCreated={() => { setPage(1); fetchOrders(1); }}
+                                trigger={<Button variant="outline"><Wand2 className="mr-2 size-4" /> Auto-reorder</Button>}
+                            />
+                        )}
                         {canCreate && (
                             <Button asChild>
                                 <Link href="/purchase-orders/create">
