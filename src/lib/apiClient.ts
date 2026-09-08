@@ -19,6 +19,8 @@ apiClient.interceptors.request.use((config) => {
 
 // Guard to prevent multiple simultaneous 401 redirects
 let isRedirecting = false;
+// Debounce the "not in your plan" toast so a burst of gated calls shows it once.
+let lastModuleToast = 0;
 
 apiClient.interceptors.response.use(
     (response) => response,
@@ -37,6 +39,20 @@ apiClient.interceptors.response.use(
             // Never-resolving promise stops page-level catch handlers from firing
             // while the navigation is in progress.
             return new Promise(() => {});
+        }
+
+        // Module-not-entitled — surface a single toast; the ModuleGuard on the
+        // page renders the upgrade screen for the visible case.
+        const detail = axios.isAxiosError(error) ? error.response?.data?.detail : undefined;
+        if (
+            error?.response?.status === 403 &&
+            detail && typeof detail === "object" && detail.code === "MODULE_NOT_ENTITLED"
+        ) {
+            const now = Date.now();
+            if (now - lastModuleToast > 4000) {
+                lastModuleToast = now;
+                toast.error(detail.message || "This feature isn't in your plan.");
+            }
         }
         return Promise.reject(error);
     }
