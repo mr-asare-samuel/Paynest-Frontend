@@ -57,3 +57,39 @@ export const CreateOrgModuleGrant = async (
 export const DeleteOrgModuleGrant = async (orgId: number, grantId: number): Promise<void> => {
     await apiClient.delete(`/organizations/${orgId}/module-grants/${grantId}`);
 };
+
+// ── Phase D: rollout visibility ───────────────────────────────────────────
+
+export interface EntitlementStats {
+    active_organizations: number;
+    modules: {
+        code: string; name: string; is_core: boolean;
+        entitled_orgs: number; plans_including: number;
+    }[];
+}
+
+export interface ExpiringOrg {
+    organization_id: number;
+    name: string;
+    plan_name: string | null;
+    expires_at: string;
+    days_left: number;
+    expired: boolean;
+}
+
+export const GetEntitlementStats = async (): Promise<EntitlementStats> => {
+    const res = await apiClient.get(`/entitlements/stats`);
+    return res.data;
+};
+
+export const GetExpiringSubscriptions = async (days = 14): Promise<{ days: number; organizations: ExpiringOrg[] }> => {
+    const res = await apiClient.get(`/entitlements/expiring`, { params: { days } });
+    return res.data;
+};
+
+export const GrandfatherOrgs = async (
+    body: { strategy: "grant_all" | "legacy_plan"; org_ids?: number[]; active_only?: boolean },
+): Promise<{ strategy: string; organizations: number; grants_added?: number }> => {
+    const res = await apiClient.post(`/entitlements/grandfather`, body);
+    return res.data;
+};

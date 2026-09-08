@@ -35,6 +35,8 @@ import { handleErrorMessage } from "@/utils/handleErrorMessage";
 import {
     GetModules, CreateModule, UpdateModule, SetPlanModules,
     GetOrgModuleGrants, CreateOrgModuleGrant, DeleteOrgModuleGrant,
+    GetEntitlementStats, GetExpiringSubscriptions, GrandfatherOrgs,
+    type EntitlementStats, type ExpiringOrg,
 } from "@/(api-handlers)/entitlementsHandler";
 import { getSubscriptionPlans } from "@/(api-handlers)/subscriptionPlansHandler";
 import { getAllOrganizations, changeOrganizationSubscriptionPlan } from "@/(api-handlers)/organizationHandler";
@@ -50,6 +52,8 @@ export default function ModulesAdminPage() {
     const [modules, setModules] = useState<ModuleResponse[]>([]);
     const [plans, setPlans] = useState<SubscriptionPlanResponse[]>([]);
     const [orgs, setOrgs] = useState<OrganizationResponse[]>([]);
+    const [stats, setStats] = useState<EntitlementStats | null>(null);
+    const [expiring, setExpiring] = useState<ExpiringOrg[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -59,14 +63,18 @@ export default function ModulesAdminPage() {
     const load = async () => {
         setLoading(true);
         try {
-            const [m, p, o] = await Promise.all([
+            const [m, p, o, s, e] = await Promise.all([
                 GetModules(true),
                 getSubscriptionPlans({ limit: 100 }),
                 getAllOrganizations().catch(() => []),
+                GetEntitlementStats().catch(() => null),
+                GetExpiringSubscriptions(30).then((r) => r.organizations).catch(() => []),
             ]);
             setModules(m);
             setPlans(p);
             setOrgs(o);
+            setStats(s);
+            setExpiring(e);
         } catch (e) {
             handleErrorMessage(e, "Failed to load module data");
         } finally {
@@ -102,13 +110,13 @@ export default function ModulesAdminPage() {
                 </TabsList>
 
                 <TabsContent value="catalog" className="mt-4">
-                    <CatalogTab modules={modules} loading={loading} reload={load} />
+                    <CatalogTab modules={modules} stats={stats} loading={loading} reload={load} />
                 </TabsContent>
                 <TabsContent value="plans" className="mt-4">
                     <PlansTab modules={modules} plans={plans} loading={loading} reload={load} />
                 </TabsContent>
                 <TabsContent value="orgs" className="mt-4">
-                    <OrgsTab modules={modules} plans={plans} orgs={orgs} loading={loading} reloadOrgs={load} />
+                    <OrgsTab modules={modules} plans={plans} orgs={orgs} expiring={expiring} loading={loading} reloadOrgs={load} />
                 </TabsContent>
             </Tabs>
         </div>
@@ -117,9 +125,10 @@ export default function ModulesAdminPage() {
 
 // ── Catalog tab ────────────────────────────────────────────────────────────
 
-function CatalogTab({ modules, loading, reload }: {
-    modules: ModuleResponse[]; loading: boolean; reload: () => void;
+function CatalogTab({ modules, stats, loading, reload }: {
+    modules: ModuleResponse[]; stats: EntitlementStats | null; loading: boolean; reload: () => void;
 }) {
+    const usage = new Map((stats?.modules ?? []).map((m) => [m.code, m]));
     const [open, setOpen] = useState(false);
     const [editing, setEditing] = useState<ModuleResponse | null>(null);
     const blank = { code: "", name: "", description: "", group: "", is_core: false, sort_order: "100" };
@@ -180,6 +189,7 @@ function CatalogTab({ modules, loading, reload }: {
                             <TableHead>Name</TableHead>
                             <TableHead>Group</TableHead>
                             <TableHead>Type</TableHead>
+                            <TableHead className="text-right">Usage</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead className="w-[60px] pr-6 text-right">Actions</TableHead>
                         </TableRow>
@@ -188,7 +198,7 @@ function CatalogTab({ modules, loading, reload }: {
                         {loading ? (
                             Array.from({ length: 6 }).map((_, i) => (
                                 <TableRow key={i}>
-                                    {Array.from({ length: 6 }).map((_, j) => (
+                                    {Array.from({ length: 7 }).map((_, j) => (
                                         <TableCell key={j}><Skeleton className="h-5 w-full rounded" /></TableCell>
                                     ))}
                                 </TableRow>
@@ -206,6 +216,14 @@ function CatalogTab({ modules, loading, reload }: {
                                         m.is_core ? "border-info/30 bg-info/10 text-info" : "border-border")}>
                                         {m.is_core ? "core" : "gated"}
                                     </Badge>
+                                </TableCell>
+                                <TableCell className="text-muted-foreground text-right text-xs">
+                                    {usage.has(m.code) ? (
+                                        <span title="entitled orgs · plans including">
+                                            {usage.get(m.code)!.entitled_orgs} org{usage.get(m.code)!.entitled_orgs !== 1 ? "s" : ""}
+                                            {" · "}{usage.get(m.code)!.plans_including} plan{usage.get(m.code)!.plans_including !== 1 ? "s" : ""}
+                                        </span>
+                                    ) : "—"}
                                 </TableCell>
                                 <TableCell>
                                     <Badge variant="outline" className={cn("rounded-full text-xs",
@@ -365,12 +383,27 @@ function PlansTab({ modules, plans, loading, reload }: {
 
 // ── Organisations tab ──────────────────────────────────────────────────────
 
-function OrgsTab({ modules, plans, orgs, loading, reloadOrgs }: {
+function OrgsTab({ modules, plans, orgs, expiring, loading, reloadOrgs }: {
     modules: ModuleResponse[]; plans: SubscriptionPlanResponse[];
-    orgs: OrganizationResponse[]; loading: boolean; reloadOrgs: () => void;
+    orgs: OrganizationResponse[]; expiring: ExpiringOrg[]; loading: boolean; reloadOrgs: () => void;
 }) {
     const gated = useMemo(() => modules.filter((m) => !m.is_core && m.is_active), [modules]);
     const [orgId, setOrgId] = useState<string>("");
+    const [grandfathering, setGrandfathering] = useState(false);
+
+    const runGrandfather = async () => {
+        if (!confirm("Grant every gated module to all active organisations that don't already have it?\n\nUse this once before turning on enforcement so nobody loses access.")) return;
+        setGrandfathering(true);
+        try {
+            const r = await GrandfatherOrgs({ strategy: "grant_all" });
+            toast.success(`${r.grants_added ?? 0} grants added across ${r.organizations} orgs`);
+            reloadOrgs();
+        } catch (e) {
+            handleErrorMessage(e, "Grandfather run failed");
+        } finally {
+            setGrandfathering(false);
+        }
+    };
     const [grants, setGrants] = useState<ModuleGrantResponse[]>([]);
     const [loadingGrants, setLoadingGrants] = useState(false);
     const [addOpen, setAddOpen] = useState(false);
@@ -441,6 +474,36 @@ function OrgsTab({ modules, plans, orgs, loading, reloadOrgs }: {
 
     return (
         <div className="flex flex-col gap-4">
+            <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
+                <div className="text-xs">
+                    <p className="text-foreground font-medium">Enforcement rollout</p>
+                    <p className="text-muted-foreground">
+                        Grandfather every active org before flipping <code className="font-mono">MODULE_ENFORCEMENT_ENABLED</code>.
+                    </p>
+                </div>
+                <Button variant="outline" size="sm" onClick={runGrandfather} disabled={grandfathering}>
+                    {grandfathering ? "Working…" : "Grandfather all active orgs"}
+                </Button>
+            </Card>
+
+            {expiring.length > 0 && (
+                <Card className="border-warning/30 bg-warning/5 p-4">
+                    <p className="text-warning-foreground mb-2 text-xs font-medium">
+                        Subscriptions expiring / expired ({expiring.length})
+                    </p>
+                    <div className="flex flex-col gap-1 text-xs">
+                        {expiring.slice(0, 12).map((o) => (
+                            <div key={o.organization_id} className="flex justify-between">
+                                <span>{o.name} <span className="text-muted-foreground">· {o.plan_name ?? "no plan"}</span></span>
+                                <span className={o.expired ? "text-destructive" : "text-muted-foreground"}>
+                                    {o.expired ? "expired" : `${o.days_left}d left`} — {new Date(o.expires_at).toLocaleDateString()}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
+            )}
+
             <div className="flex flex-wrap items-end gap-4">
                 <div className="w-64 space-y-1.5">
                     <Label>Organisation</Label>

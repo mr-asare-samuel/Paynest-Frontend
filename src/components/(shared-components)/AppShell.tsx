@@ -74,6 +74,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useAuthStore } from "@/(zustand-store)/authStore";
 import { useEntitlementStore } from "@/(zustand-store)/entitlementStore";
+import { EntitlementBanner } from "./EntitlementBanner";
 import { NotificationBell } from "./NotificationBell";
 import { UserMenu } from "./UserMenu";
 
@@ -490,6 +491,8 @@ export default function AppShell({
                         <UserMenu variant="compact" />
                     </div>
                 </header>
+
+                <EntitlementBanner />
 
                 <div className="min-w-0 flex-1 overflow-x-clip p-4 lg:p-6">
                     {children}
