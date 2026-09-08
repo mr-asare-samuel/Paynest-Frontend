@@ -72,6 +72,7 @@ import {
     SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { useAuthStore } from "@/(zustand-store)/authStore";
+import { useEntitlementStore } from "@/(zustand-store)/entitlementStore";
 import { NotificationBell } from "./NotificationBell";
 import { UserMenu } from "./UserMenu";
 
@@ -82,6 +83,7 @@ interface NavLeaf {
     href: string;
     icon: LucideIcon;
     roles: Role[];
+    module?: string;   // entitlement module code; omitted = always visible
 }
 
 interface NavGroup {
@@ -95,6 +97,7 @@ interface NavItem {
     icon: LucideIcon;
     roles: Role[];
     href?: string;
+    module?: string;
     subItems?: NavLeaf[];
 }
 
@@ -125,9 +128,9 @@ const NAV_GROUPS: NavGroup[] = [
                     { name: "Daily Sales Analysis", href: "/sales-report", icon: BarChart3, roles: ["superadmin", "admin", "manager", "attendant"] },
                     { name: "Order Items", href: "/order-items", icon: ShoppingCart, roles: ["superadmin", "admin", "manager", "attendant"] },
                     { name: "Payments", href: "/payments", icon: Banknote, roles: ["superadmin", "admin", "manager", "attendant"] },
-                    { name: "Returns", href: "/returns", icon: RotateCcw, roles: ["superadmin", "admin", "manager", "attendant"] },
-                    { name: "Transfers", href: "/transfers", icon: ArrowLeftRight, roles: ["superadmin", "admin", "manager", "attendant"] },
-                    { name: "Expenses", href: "/expenses", icon: Receipt, roles: ["superadmin", "admin", "manager", "attendant"] },
+                    { name: "Returns", href: "/returns", icon: RotateCcw, roles: ["superadmin", "admin", "manager", "attendant"], module: "returns" },
+                    { name: "Transfers", href: "/transfers", icon: ArrowLeftRight, roles: ["superadmin", "admin", "manager", "attendant"], module: "advanced_inventory" },
+                    { name: "Expenses", href: "/expenses", icon: Receipt, roles: ["superadmin", "admin", "manager", "attendant"], module: "expenses" },
                 ],
             },
             { name: "Daily Closure", href: "/daily-closure", icon: Banknote, roles: ["admin", "manager", "attendant"] },
@@ -147,9 +150,9 @@ const NAV_GROUPS: NavGroup[] = [
                     { name: "All Inventory", href: "/inventory", icon: CreditCard, roles: ["manager", "attendant"] },
                     { name: "Create Inventory", href: "/inventory/create", icon: PlusCircle, roles: ["manager", "attendant"] },
                     { name: "Stock Movements", href: "/stock-movements", icon: ArrowLeftRight, roles: ["manager", "attendant"] },
-                    { name: "Serial Numbers", href: "/inventory/serials", icon: Barcode, roles: ["manager"] },
-                    { name: "Batches & Expiry", href: "/inventory/batches", icon: Boxes, roles: ["manager"] },
-                    { name: "Stock Valuation", href: "/inventory/valuation", icon: Scale, roles: ["manager"] },
+                    { name: "Serial Numbers", href: "/inventory/serials", icon: Barcode, roles: ["manager"], module: "advanced_inventory" },
+                    { name: "Batches & Expiry", href: "/inventory/batches", icon: Boxes, roles: ["manager"], module: "advanced_inventory" },
+                    { name: "Stock Valuation", href: "/inventory/valuation", icon: Scale, roles: ["manager"], module: "advanced_inventory" },
                 ],
             },
         ],
@@ -158,20 +161,21 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Pricing & Discounts",
         roles: ["admin", "manager"],
         items: [
-            { name: "Promo Codes", href: "/promo-codes", icon: TicketPercent, roles: ["admin", "manager"] },
-            { name: "Pricing Rules", href: "/pricing", icon: Tag, roles: ["admin", "manager"] },
-            { name: "Bundles", href: "/bundles", icon: Sparkles, roles: ["admin", "manager"] },
+            { name: "Promo Codes", href: "/promo-codes", icon: TicketPercent, roles: ["admin", "manager"], module: "advanced_pricing" },
+            { name: "Pricing Rules", href: "/pricing", icon: Tag, roles: ["admin", "manager"], module: "advanced_pricing" },
+            { name: "Bundles", href: "/bundles", icon: Sparkles, roles: ["admin", "manager"], module: "advanced_pricing" },
         ],
     },
     {
         label: "Procurement",
         roles: ["admin", "manager"],
         items: [
-            { name: "Vendors", href: "/vendors", icon: Store, roles: ["admin", "manager"] },
+            { name: "Vendors", href: "/vendors", icon: Store, roles: ["admin", "manager"], module: "procurement" },
             {
                 name: "Purchase Orders",
                 icon: Truck,
                 roles: ["admin", "manager"],
+                module: "procurement",
                 subItems: [
                     { name: "All Purchase Orders", href: "/purchase-orders", icon: Truck, roles: ["admin", "manager"] },
                     { name: "Create Purchase Order", href: "/purchase-orders/create", icon: PlusCircle, roles: ["admin", "manager"] },
@@ -202,6 +206,7 @@ const NAV_GROUPS: NavGroup[] = [
                 name: "Reports",
                 icon: BarChart3,
                 roles: ["admin", "manager"],
+                module: "reports_advanced",
                 subItems: [
                     { name: "Organization Reports", href: "/report", icon: BarChart3, roles: ["admin"] },
                     { name: "My Reports", href: "/report/my_report", icon: BarChart3, roles: ["admin", "manager"] },
@@ -213,7 +218,7 @@ const NAV_GROUPS: NavGroup[] = [
                 icon: CircleDollarSign,
                 roles: ["admin"],
                 subItems: [
-                    { name: "Organization Finance", href: "/finance", icon: PieChart, roles: ["superadmin", "admin"] },
+                    { name: "Organization Finance", href: "/finance", icon: PieChart, roles: ["superadmin", "admin"], module: "finance" },
                 ],
             },
         ],
@@ -222,33 +227,33 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Payroll",
         roles: ["admin"],
         items: [
-            { name: "Payroll Runs", href: "/payroll", icon: Banknote, roles: ["admin"] },
-            { name: "Payroll History", href: "/payroll/history", icon: TrendingUp, roles: ["admin"] },
-            { name: "Employee Payroll", href: "/payroll/employees", icon: Wallet, roles: ["admin"] },
-            { name: "Payroll Settings", href: "/settings/payroll", icon: Calculator, roles: ["admin"] },
+            { name: "Payroll Runs", href: "/payroll", icon: Banknote, roles: ["admin"], module: "payroll" },
+            { name: "Payroll History", href: "/payroll/history", icon: TrendingUp, roles: ["admin"], module: "payroll" },
+            { name: "Employee Payroll", href: "/payroll/employees", icon: Wallet, roles: ["admin"], module: "payroll" },
+            { name: "Payroll Settings", href: "/settings/payroll", icon: Calculator, roles: ["admin"], module: "payroll" },
         ],
     },
     {
         label: "My Pay",
         roles: ["admin", "manager", "attendant"],
         items: [
-            { name: "My Payslips", href: "/payroll/my-payslips", icon: Receipt, roles: ["admin", "manager", "attendant"] },
+            { name: "My Payslips", href: "/payroll/my-payslips", icon: Receipt, roles: ["admin", "manager", "attendant"], module: "payroll" },
         ],
     },
     {
         label: "Leave & HR",
         roles: ["admin", "manager", "attendant"],
         items: [
-            { name: "Leave", href: "/leave", icon: CalendarDays, roles: ["admin", "manager", "attendant"] },
+            { name: "Leave", href: "/leave", icon: CalendarDays, roles: ["admin", "manager", "attendant"], module: "hr_leave" },
         ],
     },
     {
         label: "Scheduling",
         roles: ["admin", "manager", "attendant"],
         items: [
-            { name: "Shifts & Overtime", href: "/scheduling", icon: CalendarClock, roles: ["admin", "manager", "attendant"] },
-            { name: "Timesheets", href: "/timesheets", icon: Clock, roles: ["admin", "manager", "attendant"] },
-            { name: "Overtime Rules", href: "/settings/scheduling", icon: Settings2, roles: ["admin"] },
+            { name: "Shifts & Overtime", href: "/scheduling", icon: CalendarClock, roles: ["admin", "manager", "attendant"], module: "hr_leave" },
+            { name: "Timesheets", href: "/timesheets", icon: Clock, roles: ["admin", "manager", "attendant"], module: "hr_leave" },
+            { name: "Overtime Rules", href: "/settings/scheduling", icon: Settings2, roles: ["admin"], module: "hr_leave" },
         ],
     },
     {
@@ -292,7 +297,7 @@ const NAV_GROUPS: NavGroup[] = [
                     { name: "Security", href: "/settings/security", icon: Key, roles: ["superadmin", "admin", "manager", "attendant"] },
                     { name: "Notifications", href: "/settings/notifications", icon: Bell, roles: ["superadmin", "admin", "manager", "attendant"] },
                     { name: "Printer Settings", href: "/settings/printer", icon: Printer, roles: ["admin", "manager", "attendant"] },
-                    { name: "Receipt Settings", href: "/settings/receipts", icon: Receipt, roles: ["admin"] },
+                    { name: "Receipt Settings", href: "/settings/receipts", icon: Receipt, roles: ["admin"], module: "receipts_branding" },
                     { name: "Expense Categories", href: "/settings/expense-categories", icon: Tag, roles: ["admin", "manager"] },
                     { name: "System Settings", href: "/settings/system", icon: Wrench, roles: ["superadmin"] },
                 ],
@@ -379,8 +384,14 @@ export default function AppShell({
 }: Readonly<{ children: React.ReactNode }>) {
     const pathname = usePathname();
     const router = useRouter();
-    const { user } = useAuthStore();
+    const { user, isAuthenticated } = useAuthStore();
     const role = (user?.role as Role) ?? "attendant";
+
+    const entLoaded = useEntitlementStore((s) => s.loaded);
+    const entLoading = useEntitlementStore((s) => s.loading);
+    const entModules = useEntitlementStore((s) => s.modules);
+    const fetchEntitlements = useEntitlementStore((s) => s.fetchEntitlements);
+    const clearEntitlements = useEntitlementStore((s) => s.clear);
 
     React.useEffect(() => {
         if (!user) return;
@@ -390,12 +401,28 @@ export default function AppShell({
         }
     }, [user, pathname, router]);
 
+    // Keep entitlements in sync with the auth session (covers login + refresh + logout).
+    React.useEffect(() => {
+        if (isAuthenticated && user && !entLoaded && !entLoading) fetchEntitlements();
+        if (!isAuthenticated && entLoaded) clearEntitlements();
+    }, [isAuthenticated, user, entLoaded, entLoading, fetchEntitlements, clearEntitlements]);
+
+    const hasModule = React.useCallback(
+        (code?: string) => !code || !entLoaded || role === "superadmin" || entModules.includes(code),
+        [entLoaded, entModules, role],
+    );
+
     const groups = React.useMemo(() => {
         return NAV_GROUPS.map((g) => ({
             ...g,
-            items: g.items.filter((it) => it.roles.includes(role)),
+            items: g.items
+                .filter((it) => it.roles.includes(role) && hasModule(it.module))
+                .map((it) => it.subItems
+                    ? { ...it, subItems: it.subItems.filter((s) => hasModule(s.module)) }
+                    : it)
+                .filter((it) => !it.subItems || it.subItems.length > 0),
         })).filter((g) => g.roles.includes(role) && g.items.length > 0);
-    }, [role]);
+    }, [role, hasModule]);
 
     return (
         <SidebarProvider>
