@@ -43,6 +43,8 @@ import { ExpenseCategoryResponse } from "@/interfaces/expenses";
 import { OrganizationShopResponse } from "@/interfaces/organizationShops";
 import { toast } from "sonner";
 import PageHeader from "@/components/(shared-components)/PageHeader";
+import Pagination from "@/components/(shared-components)/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 import { cn } from "@/lib/utils";
 
 const schema = z.object({
@@ -157,6 +159,7 @@ export default function ExpenseCategoriesPage() {
         c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (c.description ?? '').toLowerCase().includes(searchTerm.toLowerCase())
     );
+    const pg = usePagination(filtered, 10);
 
     if (!user || !isAllowed) {
         return (
@@ -225,7 +228,7 @@ export default function ExpenseCategoriesPage() {
                                         <p className="text-muted-foreground mt-1 text-sm">Create your first category to get started.</p>
                                     </TableCell>
                                 </TableRow>
-                            ) : filtered.map(cat => (
+                            ) : pg.pageItems.map(cat => (
                                 <TableRow key={cat.id}>
                                     <TableCell className="pl-6 font-semibold">{cat.name}</TableCell>
                                     <TableCell className="text-muted-foreground line-clamp-1 max-w-xs">
@@ -277,8 +280,8 @@ export default function ExpenseCategoriesPage() {
                 </div>
 
                 {!loading && filtered.length > 0 && (
-                    <div className="border-border bg-muted/30 border-t px-6 py-3 text-xs">
-                        <span className="text-muted-foreground">{filtered.length} categor{filtered.length !== 1 ? 'ies' : 'y'}</span>
+                    <div className="border-border bg-muted/30 border-t px-4 py-3">
+                        <Pagination page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage} total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize} />
                     </div>
                 )}
             </Card>

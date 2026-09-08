@@ -24,6 +24,8 @@ import { OrganizationShopResponse } from '@/interfaces/organizationShops';
 import { handleErrorMessage } from '@/utils/handleErrorMessage';
 import { toast } from 'sonner';
 import PageHeader from '@/components/(shared-components)/PageHeader';
+import Pagination from '@/components/(shared-components)/Pagination';
+import { usePagination } from '@/hooks/usePagination';
 import { StatusPill } from '@/components/(shared-components)/StatusPill';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -273,6 +275,7 @@ export default function PaymentsPage() {
             return ms && mf;
         })
         .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime());
+    const pg = usePagination(filtered, 10);
 
     const handleExport = () => {
         downloadCsv(`payments-${new Date().toISOString().split('T')[0]}.csv`, filtered.map(p => ({
@@ -413,7 +416,7 @@ export default function PaymentsPage() {
                                         <p className="text-muted-foreground text-sm">No payments found.</p>
                                     </TableCell>
                                 </TableRow>
-                            ) : filtered.map(p => (
+                            ) : pg.pageItems.map(p => (
                                 <TableRow key={p.id}>
                                     <TableCell className="pl-6">
                                         <p className="text-foreground font-mono text-sm font-bold">{p.payment_number}</p>
@@ -486,10 +489,8 @@ export default function PaymentsPage() {
                 </div>
 
                 {!loading && filtered.length > 0 && (
-                    <div className="border-border bg-muted/30 border-t px-6 py-3 text-xs">
-                        <span className="text-muted-foreground">
-                            {filtered.length} payment{filtered.length !== 1 ? 's' : ''}
-                        </span>
+                    <div className="border-border bg-muted/30 border-t px-4 py-3">
+                        <Pagination page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage} total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize} />
                     </div>
                 )}
             </Card>

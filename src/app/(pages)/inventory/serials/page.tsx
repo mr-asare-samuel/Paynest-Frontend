@@ -25,6 +25,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import PageHeader from "@/components/(shared-components)/PageHeader";
+import Pagination from "@/components/(shared-components)/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/(zustand-store)/authStore";
 import { handleErrorMessage } from "@/utils/handleErrorMessage";
@@ -130,6 +132,8 @@ export default function SerialsPage() {
         }
     };
 
+    const pg = usePagination(rows, 10);
+
     if (!user || !isAllowed) {
         return <div className="flex items-center justify-center py-24"><Skeleton className="size-6 rounded-full" /></div>;
     }
@@ -198,7 +202,7 @@ export default function SerialsPage() {
                                         <p className="text-muted-foreground mt-1 text-sm">Register serials to start per-unit tracking for a product.</p>
                                     </TableCell>
                                 </TableRow>
-                            ) : rows.map((r) => (
+                            ) : pg.pageItems.map((r) => (
                                 <TableRow key={r.id}>
                                     <TableCell className="pl-6 font-mono text-sm">{r.serial_number}</TableCell>
                                     <TableCell className="font-medium">{productName(r.product_id)}</TableCell>
@@ -232,6 +236,11 @@ export default function SerialsPage() {
                         </TableBody>
                     </Table>
                 </div>
+                {!loading && rows.length > 0 && (
+                    <div className="border-border bg-muted/30 border-t px-4 py-3">
+                        <Pagination page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage} total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize} />
+                    </div>
+                )}
             </Card>
 
             <Dialog open={dialogOpen} onOpenChange={(o) => !o && setDialogOpen(false)}>

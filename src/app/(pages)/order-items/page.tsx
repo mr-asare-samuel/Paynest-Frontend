@@ -22,6 +22,8 @@ import { OrganizationShopResponse } from '@/interfaces/organizationShops';
 import { handleErrorMessage } from '@/utils/handleErrorMessage';
 import { toast } from 'sonner';
 import PageHeader from '@/components/(shared-components)/PageHeader';
+import Pagination from '@/components/(shared-components)/Pagination';
+import { usePagination } from '@/hooks/usePagination';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -217,6 +219,7 @@ export default function OrderItemsPage() {
             return ms && mf;
         })
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const pg = usePagination(filtered, 10);
 
     return (
         <div className="flex flex-col gap-6">
@@ -340,7 +343,7 @@ export default function OrderItemsPage() {
                                         <p className="text-muted-foreground text-sm">No order items found.</p>
                                     </TableCell>
                                 </TableRow>
-                            ) : filtered.map(item => (
+                            ) : pg.pageItems.map(item => (
                                 <TableRow key={item.id}>
                                     <TableCell className="pl-6">
                                         <p className="text-foreground font-bold">#{item.order_number || item.order_id}</p>
@@ -425,8 +428,8 @@ export default function OrderItemsPage() {
                 </div>
 
                 {!loading && filtered.length > 0 && (
-                    <div className="border-border bg-muted/30 border-t px-6 py-3 text-xs">
-                        <span className="text-muted-foreground">{filtered.length} item{filtered.length !== 1 ? 's' : ''}</span>
+                    <div className="border-border bg-muted/30 border-t px-4 py-3">
+                        <Pagination page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage} total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize} />
                     </div>
                 )}
             </Card>

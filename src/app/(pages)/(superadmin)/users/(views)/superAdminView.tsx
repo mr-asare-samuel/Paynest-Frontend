@@ -2,7 +2,10 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import axios from 'axios';
-import { Search, Pencil, RefreshCcw, Users, Eye, CheckCircle2, XCircle, Crown, RotateCcw, Loader2 } from 'lucide-react';
+import {
+    Search, Pencil, RefreshCcw, Users, Eye, CheckCircle2, XCircle, Crown,
+    RotateCcw, Loader2, MoreHorizontal, Copy, UserCog, Building2, AlertTriangle, X,
+} from 'lucide-react';
 import { getAllUsers } from '@/(api-handlers)/userHandler';
 import { resendAdminVerification } from '@/(api-handlers)/organizationHandler';
 import { UserResponse } from '@/interfaces/loginInterface';
@@ -11,13 +14,19 @@ import Pagination from '@/components/(shared-components)/Pagination';
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
+import {
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
+    DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+    DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import StatsGrid from '@/components/(shared-components)/StatsGrid';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -30,6 +39,7 @@ const RESEND_VERIFICATION_COOLDOWN_SECONDS = 120;
 
 type Role = 'all' | 'superadmin' | 'admin' | 'manager' | 'attendant';
 type Status = 'all' | 'active' | 'inactive';
+type Verified = 'all' | 'verified' | 'pending';
 
 const ROLE_BADGE: Record<string, string> = {
     superadmin: 'border-primary/30 bg-primary/10 text-primary',
@@ -49,9 +59,12 @@ function getInitials(first: string, last: string) {
     return `${first?.[0] ?? ''}${last?.[0] ?? ''}`.toUpperCase() || '?';
 }
 
-function fmtDate(iso: string) {
+function fmtDate(iso?: string) {
     if (!iso) return '—';
-    return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime())
+        ? '—'
+        : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export default function SuperAdminPage() {
@@ -60,6 +73,8 @@ export default function SuperAdminPage() {
     const [searchText, setSearchText] = useState('');
     const [roleFilter, setRoleFilter] = useState<Role>('all');
     const [statusFilter, setStatusFilter] = useState<Status>('all');
+    const [verifiedFilter, setVerifiedFilter] = useState<Verified>('all');
+    const [orgFilter, setOrgFilter] = useState('all');
     const [currentPage, setCurrentPage] = useState(1);
     const [resendingId, setResendingId] = useState<number | null>(null);
     const [cooldowns, startCooldown] = useKeyedCooldown();
@@ -93,7 +108,7 @@ export default function SuperAdminPage() {
     };
 
     useEffect(() => { fetchUsers(); }, []);
-    useEffect(() => { setCurrentPage(1); }, [searchText, roleFilter, statusFilter]);
+    useEffect(() => { setCurrentPage(1); }, [searchText, roleFilter, statusFilter, verifiedFilter, orgFilter]);
 
     const stats = useMemo(() => ({
         total:      users.length,
@@ -104,13 +119,27 @@ export default function SuperAdminPage() {
         attendant:  users.filter(u => u.role === 'attendant').length,
     }), [users]);
 
+    const pendingAdmins = useMemo(
+        () => users.filter(u => u.role === 'admin' && !u.email_verified).length,
+        [users],
+    );
+
+    const orgs = useMemo(() => {
+        const map = new Map<number, string>();
+        users.forEach(u => { if (u.organization) map.set(u.organization.id, u.organization.name); });
+        return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+    }, [users]);
+
     const filtered = useMemo(() => users.filter(u => {
         const q = searchText.toLowerCase();
-        const matchSearch = `${u.first_name} ${u.last_name} ${u.email} ${u.username}`.toLowerCase().includes(q);
+        const matchSearch = `${u.first_name} ${u.last_name} ${u.email} ${u.username} ${u.organization?.name ?? ''}`.toLowerCase().includes(q);
         const matchRole   = roleFilter === 'all' || u.role === roleFilter;
         const matchStatus = statusFilter === 'all' || (statusFilter === 'active' ? u.is_active : !u.is_active);
-        return matchSearch && matchRole && matchStatus;
-    }), [users, searchText, roleFilter, statusFilter]);
+        const matchVerified = verifiedFilter === 'all' || (verifiedFilter === 'verified' ? u.email_verified : !u.email_verified);
+        const matchOrg = orgFilter === 'all'
+            || (orgFilter === 'none' ? !u.organization : String(u.organization?.id) === orgFilter);
+        return matchSearch && matchRole && matchStatus && matchVerified && matchOrg;
+    }), [users, searchText, roleFilter, statusFilter, verifiedFilter, orgFilter]);
 
     const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
     const currentUsers = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -123,8 +152,17 @@ export default function SuperAdminPage() {
         { key: 'attendant', label: 'Attendant' },
     ];
 
+    const hasFilters = !!searchText || roleFilter !== 'all' || statusFilter !== 'all'
+        || verifiedFilter !== 'all' || orgFilter !== 'all';
+    const clearFilters = () => {
+        setSearchText('');
+        setRoleFilter('all');
+        setStatusFilter('all');
+        setVerifiedFilter('all');
+        setOrgFilter('all');
+    };
+
     return (
-        <TooltipProvider>
         <div className="flex flex-col gap-6">
             <PageHeader
                 title="User Management"
@@ -149,12 +187,32 @@ export default function SuperAdminPage() {
                 ]}
             />
 
+            {/* ── Pending admin verification banner ─────────────────────────── */}
+            {!loading && pendingAdmins > 0 && (
+                <div className="border-warning/30 bg-warning-muted/50 flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3">
+                    <div className="bg-warning/15 text-warning flex size-9 shrink-0 items-center justify-center rounded-lg">
+                        <AlertTriangle className="size-4.5" />
+                    </div>
+                    <p className="text-foreground flex-1 text-sm font-medium">
+                        {pendingAdmins} admin account{pendingAdmins !== 1 ? 's' : ''} awaiting email verification
+                    </p>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8"
+                        onClick={() => { setRoleFilter('admin'); setVerifiedFilter('pending'); }}
+                    >
+                        Show them
+                    </Button>
+                </div>
+            )}
+
             {/* ── Filters ───────────────────────────────────────────────────── */}
-            <div className="flex flex-wrap items-center gap-3">
-                <div className="relative min-w-48 flex-1 max-w-sm">
+            <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-48 flex-1 max-w-xs">
                     <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                     <Input
-                        placeholder="Search by name, email or username…"
+                        placeholder="Search name, email, org…"
                         className="h-9 pl-9 bg-background"
                         value={searchText}
                         onChange={e => setSearchText(e.target.value)}
@@ -162,7 +220,7 @@ export default function SuperAdminPage() {
                 </div>
 
                 {/* Role filter */}
-                <div className="flex rounded-lg border bg-muted/40 p-0.5 gap-0.5 flex-wrap">
+                <div className="flex flex-wrap gap-0.5 rounded-lg border bg-muted/40 p-0.5">
                     {roles.map(r => (
                         <button
                             key={r.key}
@@ -180,7 +238,7 @@ export default function SuperAdminPage() {
                 </div>
 
                 {/* Status filter */}
-                <div className="flex rounded-lg border bg-muted/40 p-0.5 gap-0.5">
+                <div className="flex gap-0.5 rounded-lg border bg-muted/40 p-0.5">
                     {(['all', 'active', 'inactive'] as Status[]).map(s => (
                         <button
                             key={s}
@@ -197,7 +255,39 @@ export default function SuperAdminPage() {
                     ))}
                 </div>
 
-                {(searchText || roleFilter !== 'all' || statusFilter !== 'all') && (
+                {/* Verified filter */}
+                <Select value={verifiedFilter} onValueChange={v => setVerifiedFilter(v as Verified)}>
+                    <SelectTrigger className="h-9 w-[140px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Any verification</SelectItem>
+                        <SelectItem value="verified">Verified</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                    </SelectContent>
+                </Select>
+
+                {/* Organization filter */}
+                <Select value={orgFilter} onValueChange={setOrgFilter}>
+                    <SelectTrigger className="h-9 w-[190px]">
+                        <div className="flex items-center gap-2">
+                            <Building2 className="text-muted-foreground size-3.5" />
+                            <SelectValue placeholder="Organization" />
+                        </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">All organizations</SelectItem>
+                        <SelectItem value="none">No organization</SelectItem>
+                        {orgs.map(([id, name]) => (
+                            <SelectItem key={id} value={String(id)}>{name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+
+                {hasFilters && (
+                    <Button variant="ghost" size="sm" className="h-9 gap-1.5 text-xs" onClick={clearFilters}>
+                        <X className="size-3.5" /> Clear
+                    </Button>
+                )}
+                {hasFilters && (
                     <span className="text-muted-foreground text-xs">
                         {filtered.length} result{filtered.length !== 1 ? 's' : ''}
                     </span>
@@ -215,8 +305,8 @@ export default function SuperAdminPage() {
                                 <TableHead>Organization</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead>Verified</TableHead>
-                                <TableHead>Last Login</TableHead>
-                                <TableHead className="pr-6 w-[140px] text-right">Actions</TableHead>
+                                <TableHead>Activity</TableHead>
+                                <TableHead className="pr-6 w-[70px] text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -236,137 +326,171 @@ export default function SuperAdminPage() {
                                         </div>
                                         <p className="text-foreground font-semibold">No users found</p>
                                         <p className="text-muted-foreground mt-1 text-sm">
-                                            {searchText ? 'Try a different search term.' : 'No users exist in the system.'}
+                                            {hasFilters ? 'Try adjusting your search or filters.' : 'No users exist in the system.'}
                                         </p>
                                     </TableCell>
                                 </TableRow>
-                            ) : currentUsers.map(u => (
-                                <TableRow key={u.id}>
-                                    {/* Identity */}
-                                    <TableCell className="pl-6">
-                                        <div className="flex items-center gap-3">
-                                            <Avatar className="size-9 shrink-0 rounded-lg">
-                                                <AvatarImage src={u.profile_pic ?? undefined} alt={`${u.first_name} ${u.last_name}`} className="object-cover" />
-                                                <AvatarFallback className={cn("rounded-lg text-xs font-bold", ROLE_AVATAR[u.role] ?? 'bg-muted text-muted-foreground')}>
-                                                    {getInitials(u.first_name, u.last_name)}
-                                                </AvatarFallback>
-                                            </Avatar>
-                                            <div className="min-w-0">
-                                                <p className="text-foreground truncate font-semibold text-sm leading-tight">
-                                                    {u.first_name} {u.last_name}
-                                                </p>
-                                                <p className="text-muted-foreground truncate text-xs">{u.email}</p>
+                            ) : currentUsers.map(u => {
+                                const onCooldown = (cooldowns[u.id] ?? 0) > 0;
+                                const canResend = u.role?.toLowerCase() === 'admin' && !u.email_verified && !!u.organization;
+                                return (
+                                    <TableRow key={u.id}>
+                                        {/* Identity */}
+                                        <TableCell className="pl-6">
+                                            <div className="flex items-center gap-3">
+                                                <Avatar className="size-9 shrink-0 rounded-lg">
+                                                    <AvatarImage src={u.profile_pic ?? undefined} alt={`${u.first_name} ${u.last_name}`} className="object-cover" />
+                                                    <AvatarFallback className={cn("rounded-lg text-xs font-bold", ROLE_AVATAR[u.role] ?? 'bg-muted text-muted-foreground')}>
+                                                        {getInitials(u.first_name, u.last_name)}
+                                                    </AvatarFallback>
+                                                </Avatar>
+                                                <div className="min-w-0">
+                                                    <p className="text-foreground truncate font-semibold text-sm leading-tight">
+                                                        {u.first_name} {u.last_name}
+                                                    </p>
+                                                    <p className="text-muted-foreground truncate text-xs">{u.email}</p>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </TableCell>
+                                        </TableCell>
 
-                                    {/* Role */}
-                                    <TableCell>
-                                        <Badge
-                                            variant="outline"
-                                            className={cn('capitalize rounded-full text-xs font-medium', ROLE_BADGE[u.role] ?? 'border-border bg-muted text-muted-foreground')}
-                                        >
-                                            {u.role === 'superadmin' && <Crown className="mr-1 size-3" />}
-                                            {u.role}
-                                        </Badge>
-                                    </TableCell>
+                                        {/* Role */}
+                                        <TableCell>
+                                            <Badge
+                                                variant="outline"
+                                                className={cn('capitalize rounded-full text-xs font-medium', ROLE_BADGE[u.role] ?? 'border-border bg-muted text-muted-foreground')}
+                                            >
+                                                {u.role === 'superadmin' && <Crown className="mr-1 size-3" />}
+                                                {u.role}
+                                            </Badge>
+                                        </TableCell>
 
-                                    {/* Organization */}
-                                    <TableCell className="text-muted-foreground text-xs">
-                                        {u.organization?.name ?? '—'}
-                                    </TableCell>
-
-                                    {/* Status */}
-                                    <TableCell>
-                                        {u.is_active ? (
-                                            <span className="text-success inline-flex items-center gap-1 text-xs font-medium">
-                                                <CheckCircle2 className="size-3.5" /> Active
-                                            </span>
-                                        ) : (
-                                            <span className="text-destructive inline-flex items-center gap-1 text-xs font-medium">
-                                                <XCircle className="size-3.5" /> Inactive
-                                            </span>
-                                        )}
-                                    </TableCell>
-
-                                    {/* Verified */}
-                                    <TableCell>
-                                        <Badge
-                                            variant="outline"
-                                            className={cn(
-                                                "text-xs rounded-full font-medium",
-                                                u.email_verified
-                                                    ? "border-success/30 bg-success/10 text-success"
-                                                    : "border-warning/30 bg-warning/10 text-warning-foreground"
+                                        {/* Organization */}
+                                        <TableCell>
+                                            {u.organization ? (
+                                                <button
+                                                    onClick={() => setOrgFilter(String(u.organization!.id))}
+                                                    className="text-foreground hover:text-primary flex items-center gap-1.5 text-sm font-medium transition-colors"
+                                                >
+                                                    <Building2 className="text-muted-foreground size-3.5 shrink-0" />
+                                                    <span className="truncate">{u.organization.name}</span>
+                                                </button>
+                                            ) : (
+                                                <span className="text-muted-foreground text-xs">Platform</span>
                                             )}
-                                        >
-                                            {u.email_verified ? 'Verified' : 'Pending'}
-                                        </Badge>
-                                    </TableCell>
+                                        </TableCell>
 
-                                    {/* Last Login */}
-                                    <TableCell className="text-muted-foreground text-xs">
-                                        {fmtDate(u.last_login)}
-                                    </TableCell>
+                                        {/* Status */}
+                                        <TableCell>
+                                            {u.is_active ? (
+                                                <span className="text-success inline-flex items-center gap-1 text-xs font-medium">
+                                                    <CheckCircle2 className="size-3.5" /> Active
+                                                </span>
+                                            ) : (
+                                                <span className="text-destructive inline-flex items-center gap-1 text-xs font-medium">
+                                                    <XCircle className="size-3.5" /> Inactive
+                                                </span>
+                                            )}
+                                        </TableCell>
 
-                                    {/* Actions */}
-                                    <TableCell className="pr-6 text-right">
-                                        <div className="flex items-center justify-end gap-1">
-                                            <Button variant="ghost" size="sm" className="h-8 px-3 text-xs gap-1.5" asChild>
-                                                <Link href={`/users/${u.id}`}><Eye className="size-3.5" /> View</Link>
-                                            </Button>
-                                            {u.role?.toLowerCase() === 'admin' && !u.email_verified && u.organization && (
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <Button
-                                                            variant="ghost" size="icon" className="size-8"
-                                                            aria-label="Resend verification email"
-                                                            disabled={resendingId === u.id || (cooldowns[u.id] ?? 0) > 0}
-                                                            onClick={() => handleResendAdminVerification(u)}
+                                        {/* Verified */}
+                                        <TableCell>
+                                            <Badge
+                                                variant="outline"
+                                                className={cn(
+                                                    "text-xs rounded-full font-medium",
+                                                    u.email_verified
+                                                        ? "border-success/30 bg-success/10 text-success"
+                                                        : "border-warning/30 bg-warning/10 text-warning-foreground"
+                                                )}
+                                            >
+                                                {u.email_verified ? 'Verified' : 'Pending'}
+                                            </Badge>
+                                        </TableCell>
+
+                                        {/* Activity */}
+                                        <TableCell>
+                                            <p className="text-foreground text-xs">Joined {fmtDate(u.created_at)}</p>
+                                            <p className="text-muted-foreground text-[11px]">
+                                                {u.last_login ? `Last seen ${fmtDate(u.last_login)}` : 'Never signed in'}
+                                            </p>
+                                        </TableCell>
+
+                                        {/* Actions */}
+                                        <TableCell className="pr-6 text-right">
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="size-8" aria-label={`Actions for ${u.first_name} ${u.last_name}`}>
+                                                        <MoreHorizontal className="size-4" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="w-56">
+                                                    <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">
+                                                        {u.first_name} {u.last_name}
+                                                    </DropdownMenuLabel>
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem asChild>
+                                                        <Link href={`/users/${u.id}`}>
+                                                            <Eye className="size-4" /> View profile
+                                                        </Link>
+                                                    </DropdownMenuItem>
+                                                    {u.employee_profile ? (
+                                                        <DropdownMenuItem asChild>
+                                                            <Link href={`/users/edit-employee-profile/${u.id}`}>
+                                                                <Pencil className="size-4" /> Edit employee profile
+                                                            </Link>
+                                                        </DropdownMenuItem>
+                                                    ) : (
+                                                        <DropdownMenuItem asChild>
+                                                            <Link href="/users/setup-employee-profile">
+                                                                <UserCog className="size-4" /> Set up employee profile
+                                                            </Link>
+                                                        </DropdownMenuItem>
+                                                    )}
+                                                    {canResend && (
+                                                        <DropdownMenuItem
+                                                            disabled={resendingId === u.id || onCooldown}
+                                                            onSelect={e => { e.preventDefault(); handleResendAdminVerification(u); }}
                                                         >
                                                             {resendingId === u.id
                                                                 ? <Loader2 className="size-4 animate-spin" />
                                                                 : <RotateCcw className="size-4" />}
-                                                        </Button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>
-                                                        {(cooldowns[u.id] ?? 0) > 0
-                                                            ? `Resend in ${formatCooldown(cooldowns[u.id])}`
-                                                            : 'Resend verification email'}
-                                                    </TooltipContent>
-                                                </Tooltip>
-                                            )}
-                                            {u.employee_profile && (
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <Button variant="ghost" size="icon" className="size-8" asChild aria-label="Edit employee profile">
-                                                            <Link href={`/users/edit-employee-profile/${u.id}`}><Pencil className="size-4" /></Link>
-                                                        </Button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>Edit employee profile</TooltipContent>
-                                                </Tooltip>
-                                            )}
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
+                                                            {onCooldown
+                                                                ? `Resend in ${formatCooldown(cooldowns[u.id])}`
+                                                                : 'Resend verification email'}
+                                                        </DropdownMenuItem>
+                                                    )}
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(u.email); toast.success('Email copied'); }}>
+                                                        <Copy className="size-4" /> Copy email
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })}
                         </TableBody>
                     </Table>
                 </div>
 
-                {!loading && filtered.length > ITEMS_PER_PAGE && (
-                    <div className="border-border border-t px-6 py-3">
-                        <Pagination
-                            page={currentPage}
-                            totalPages={totalPages}
-                            onPageChange={setCurrentPage}
-                            total={filtered.length}
-                            isLoading={loading}
-                        />
+                {!loading && filtered.length > 0 && (
+                    <div className="border-border flex items-center justify-between gap-3 border-t px-6 py-3">
+                        <p className="text-muted-foreground text-xs">
+                            {filtered.length} user{filtered.length !== 1 ? 's' : ''}
+                            {hasFilters && users.length !== filtered.length && ` of ${users.length}`}
+                        </p>
+                        {filtered.length > ITEMS_PER_PAGE && (
+                            <Pagination
+                                page={currentPage}
+                                totalPages={totalPages}
+                                onPageChange={setCurrentPage}
+                                total={filtered.length}
+                                isLoading={loading}
+                            />
+                        )}
                     </div>
                 )}
             </Card>
         </div>
-        </TooltipProvider>
     );
 }
