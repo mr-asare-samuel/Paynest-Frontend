@@ -268,6 +268,7 @@ const NAV_GROUPS: NavGroup[] = [
                 subItems: [
                     { name: "Organizations", href: "/organizations", icon: Building2, roles: ["superadmin"] },
                     { name: "Subscription Plans", href: "/subscription-plans", icon: CreditCard, roles: ["superadmin"] },
+                    { name: "Modules & Entitlements", href: "/settings/modules", icon: Blocks, roles: ["superadmin"] },
                     { name: "Shops", href: "/organization_shops", icon: Building, roles: ["admin"] },
                 ],
             },
@@ -300,7 +301,6 @@ const NAV_GROUPS: NavGroup[] = [
                     { name: "Printer Settings", href: "/settings/printer", icon: Printer, roles: ["admin", "manager", "attendant"] },
                     { name: "Receipt Settings", href: "/settings/receipts", icon: Receipt, roles: ["admin"], module: "receipts_branding" },
                     { name: "Expense Categories", href: "/settings/expense-categories", icon: Tag, roles: ["admin", "manager"] },
-                    { name: "Modules & Entitlements", href: "/settings/modules", icon: Blocks, roles: ["superadmin"] },
                     { name: "System Settings", href: "/settings/system", icon: Wrench, roles: ["superadmin"] },
                 ],
             },
