@@ -7,6 +7,10 @@ export interface SubscriptionPlanResponse {
     duration_days: number | null,
     price: number | null,
     is_active: boolean,
+    is_public: boolean,
+    is_custom: boolean,
+    tier: number,
+    modules: string[],
     created_at: string,
     updated_at: string,
 }
@@ -19,6 +23,9 @@ export interface CreateSubscriptionPlanRequest {
     duration_days: number | null,
     price?: number,
     is_active: boolean,
+    is_public?: boolean,
+    is_custom?: boolean,
+    tier?: number,
 }
 
 export type UpdateSubscriptionPlanRequest = Partial<CreateSubscriptionPlanRequest>;

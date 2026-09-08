@@ -13,6 +13,7 @@ import { loginWithFormData } from "@/(api-handlers)/loginHandler";
 import { getUserData } from "@/(api-handlers)/userHandler";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/(zustand-store)/authStore";
+import { useEntitlementStore } from "@/(zustand-store)/entitlementStore";
 import { setCookie } from "cookies-next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +47,7 @@ export default function LoginPage() {
                 setCookie("user_role", response.user?.role || "attendant", { maxAge: 30 * 24 * 60 * 60, path: "/" });
                 const { setAuth, updateUser } = useAuthStore.getState();
                 setAuth(response);
+                void useEntitlementStore.getState().fetchEntitlements();
                 let currentUser = response.user;
                 try {
                     currentUser = await getUserData();
