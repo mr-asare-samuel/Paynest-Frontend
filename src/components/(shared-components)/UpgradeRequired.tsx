@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { Lock, ArrowUpRight, LifeBuoy } from "lucide-react";
+import { Lock, LifeBuoy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useEntitlementStore } from "@/(zustand-store)/entitlementStore";
@@ -36,19 +35,18 @@ export function UpgradeRequired({
                                 ?? `Your organisation is on ${planName ? `the ${planName} plan` : "a plan"} that doesn't include this feature.`}
                         </p>
                     </div>
-                    {isCustomPlan ? (
-                        <Button asChild variant="outline">
-                            <a href="mailto:support@paynest.com?subject=Feature%20access%20request">
-                                <LifeBuoy className="mr-2 size-4" /> Contact support
-                            </a>
-                        </Button>
-                    ) : (
-                        <Button asChild>
-                            <Link href="/settings/plan">
-                                <ArrowUpRight className="mr-2 size-4" /> View plans
-                            </Link>
-                        </Button>
-                    )}
+                    <Button asChild variant={isCustomPlan ? "outline" : "default"}>
+                        <a
+                            href={`mailto:support@paynest.com?subject=${encodeURIComponent(
+                                isCustomPlan
+                                    ? `Feature access request: ${moduleName}`
+                                    : `Upgrade request: ${moduleName}`,
+                            )}`}
+                        >
+                            <LifeBuoy className="mr-2 size-4" />
+                            {isCustomPlan ? "Contact support" : "Request an upgrade"}
+                        </a>
+                    </Button>
                 </CardContent>
             </Card>
         </div>
