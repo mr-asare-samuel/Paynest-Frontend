@@ -30,6 +30,8 @@ import { useAuthStore } from "@/(zustand-store)/authStore";
 import { VendorResponse } from "@/interfaces/vendors";
 import { toast } from "sonner";
 import PageHeader from "@/components/(shared-components)/PageHeader";
+import Pagination from "@/components/(shared-components)/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 import { cn } from "@/lib/utils";
 
 const schema = z.object({
@@ -154,6 +156,7 @@ export default function VendorsPage() {
         v.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (v.contact_person ?? '').toLowerCase().includes(searchTerm.toLowerCase())
     );
+    const pg = usePagination(filtered, 10);
 
     if (!user || !isAllowed) {
         return (
@@ -222,7 +225,7 @@ export default function VendorsPage() {
                                         <p className="text-muted-foreground mt-1 text-sm">Add your first vendor to start placing purchase orders.</p>
                                     </TableCell>
                                 </TableRow>
-                            ) : filtered.map(v => (
+                            ) : pg.pageItems.map(v => (
                                 <TableRow key={v.id}>
                                     <TableCell className="pl-6 font-semibold">{v.name}</TableCell>
                                     <TableCell className="text-muted-foreground">{v.contact_person || "—"}</TableCell>
@@ -271,8 +274,11 @@ export default function VendorsPage() {
                 </div>
 
                 {!loading && filtered.length > 0 && (
-                    <div className="border-border bg-muted/30 border-t px-6 py-3 text-xs">
-                        <span className="text-muted-foreground">{filtered.length} vendor{filtered.length !== 1 ? 's' : ''}</span>
+                    <div className="border-border bg-muted/30 border-t px-4 py-3">
+                        <Pagination
+                            page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage}
+                            total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize}
+                        />
                     </div>
                 )}
             </Card>

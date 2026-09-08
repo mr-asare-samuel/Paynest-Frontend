@@ -32,6 +32,11 @@ export const DeleteModule = async (id: number): Promise<void> => {
     await apiClient.delete(`/modules/${id}`);
 };
 
+export const ReorderModules = async (orderedIds: number[]): Promise<ModuleResponse[]> => {
+    const res = await apiClient.put(`/modules/reorder`, { ordered_ids: orderedIds });
+    return res.data;
+};
+
 // ── Plan → module list ────────────────────────────────────────────────────
 
 export const SetPlanModules = async (planId: number, moduleCodes: string[]) => {

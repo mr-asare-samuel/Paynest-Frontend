@@ -8,6 +8,8 @@ import { Plus, Store, MapPin, Phone, RefreshCcw } from 'lucide-react';
 import { OrganizationShopRequest, OrganizationShopResponse } from '@/interfaces/organizationShops';
 import { createOrganizationShop, getOrganizationShops } from '@/(api-handlers)/organizationShopsHandler';
 import PageHeader from '@/components/(shared-components)/PageHeader';
+import Pagination from '@/components/(shared-components)/Pagination';
+import { usePagination } from '@/hooks/usePagination';
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -69,6 +71,8 @@ export default function OrganizationShops() {
 
     const closeDialog = () => { setIsDialogOpen(false); reset(); };
 
+    const pg = usePagination(shops, 10);
+
     return (
         <div className="flex flex-col gap-6">
             <PageHeader
@@ -119,7 +123,7 @@ export default function OrganizationShops() {
                                         </p>
                                     </TableCell>
                                 </TableRow>
-                            ) : shops.map(shop => (
+                            ) : pg.pageItems.map(shop => (
                                 <TableRow key={shop.id}>
                                     <TableCell className="pl-6">
                                         <div className="flex items-center gap-2 font-medium">
@@ -150,6 +154,11 @@ export default function OrganizationShops() {
                         </TableBody>
                     </Table>
                 </div>
+                {!loading && shops.length > 0 && (
+                    <div className="border-border bg-muted/30 border-t px-4 py-3">
+                        <Pagination page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage} total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize} />
+                    </div>
+                )}
             </Card>
 
             {/* Create Shop Dialog */}

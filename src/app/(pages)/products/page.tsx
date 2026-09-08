@@ -28,6 +28,8 @@ import { OrganizationShopResponse } from '@/interfaces/organizationShops';
 import { handleErrorMessage } from '@/utils/handleErrorMessage';
 import { toast } from 'sonner';
 import PageHeader from '@/components/(shared-components)/PageHeader';
+import Pagination from '@/components/(shared-components)/Pagination';
+import { usePagination } from '@/hooks/usePagination';
 import { StatusPill } from '@/components/(shared-components)/StatusPill';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -296,6 +298,7 @@ export default function ProductsPage() {
         const mc = selectedCategory === 'all' || p.category_id.toString() === selectedCategory;
         return ms && mc;
     });
+    const pg = usePagination(filtered, 12);
 
     return (
         <div className="flex flex-col gap-6">
@@ -412,7 +415,7 @@ export default function ProductsPage() {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {filtered.map(product => {
+                    {pg.pageItems.map(product => {
                         const mp = product.markup_percentage ?? 0;
                         const profit = product.selling_price - product.cost_price;
                         const PLACEHOLDER_GRADIENTS = [
@@ -611,6 +614,14 @@ export default function ProductsPage() {
                         );
                     })}
                 </div>
+            )}
+
+            {!loading && filtered.length > 0 && (
+                <Pagination
+                    page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage}
+                    total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize}
+                    pageSizeOptions={[12, 24, 48, 96]}
+                />
             )}
 
             {/* Create / Edit modal */}

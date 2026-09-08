@@ -34,6 +34,8 @@ import { DatePicker, TimePicker } from "antd";
 import dayjs from "dayjs";
 import { toast } from "sonner";
 import PageHeader from "@/components/(shared-components)/PageHeader";
+import Pagination from "@/components/(shared-components)/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/(zustand-store)/authStore";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -174,10 +176,10 @@ export default function PricingRulesPage() {
 // ── Generic table shell ────────────────────────────────────────────────────
 
 function TableShell({
-    headers, loading, empty, children, onNew, count,
+    headers, loading, empty, children, onNew, count, pagination,
 }: {
     headers: string[]; loading: boolean; empty: ReactNode; children: ReactNode;
-    onNew: () => void; count: number;
+    onNew: () => void; count: number; pagination?: ReactNode;
 }) {
     return (
         <Card className="gap-0 overflow-hidden p-0">
@@ -208,6 +210,9 @@ function TableShell({
                     </TableBody>
                 </Table>
             </div>
+            {!loading && count > 0 && pagination && (
+                <div className="border-border bg-muted/30 border-t px-4 py-3">{pagination}</div>
+            )}
         </Card>
     );
 }
@@ -343,6 +348,7 @@ function TiersTab({ rows, loading, refs, fmt, reload, pName, cName, sName }: {
         min_quantity: "", discount_type: "percentage" as DiscountType, discount_value: "", is_active: true,
     });
     const [busy, setBusy] = useState(false);
+    const pg = usePagination(rows, 10);
 
     const openNew = () => { setEditing(null); setF({ scope: "product", product_id: "", category_id: "", shop_id: "", min_quantity: "", discount_type: "percentage", discount_value: "", is_active: true }); setOpen(true); };
     const openEdit = (r: PriceTierResponse) => {
@@ -394,8 +400,9 @@ function TiersTab({ rows, loading, refs, fmt, reload, pName, cName, sName }: {
                 headers={["Target", "From qty", "Discount", "Shop", "Status"]}
                 loading={loading} count={rows.length} onNew={openNew}
                 empty={<p className="text-muted-foreground text-sm">No volume tiers. Add “from 12 units, 15% off”.</p>}
+                pagination={<Pagination page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage} total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize} />}
             >
-                {rows.map((r) => (
+                {pg.pageItems.map((r) => (
                     <TableRow key={r.id}>
                         <TableCell className="pl-6">{r.scope === "product" ? pName(r.product_id) : `Category: ${cName(r.category_id)}`}</TableCell>
                         <TableCell>{r.min_quantity}</TableCell>
@@ -466,6 +473,7 @@ function SchedulesTab({ rows, loading, refs, fmt, reload, pName, cName, sName }:
     };
     const [f, setF] = useState(blank);
     const [busy, setBusy] = useState(false);
+    const pg = usePagination(rows, 10);
 
     const maskToDays = (mask: number | null) => {
         if (!mask) return [];
@@ -534,8 +542,9 @@ function SchedulesTab({ rows, loading, refs, fmt, reload, pName, cName, sName }:
                 headers={["Name", "Target", "Discount", "Window", "Shop", "Status"]}
                 loading={loading} count={rows.length} onNew={openNew}
                 empty={<p className="text-muted-foreground text-sm">No scheduled discounts. Add a happy-hour or weekend sale.</p>}
+                pagination={<Pagination page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage} total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize} />}
             >
-                {rows.map((r) => (
+                {pg.pageItems.map((r) => (
                     <TableRow key={r.id}>
                         <TableCell className="pl-6 font-medium">{r.name}</TableCell>
                         <TableCell className="text-muted-foreground text-xs">
@@ -654,6 +663,7 @@ function CustomerPricesTab({ rows, loading, refs, fmt, reload, pName, cName, cus
     };
     const [f, setF] = useState(blank);
     const [busy, setBusy] = useState(false);
+    const pg = usePagination(rows, 10);
 
     const openNew = () => { setEditing(null); setF(blank); setOpen(true); };
     const openEdit = (r: CustomerPriceResponse) => {
@@ -708,8 +718,9 @@ function CustomerPricesTab({ rows, loading, refs, fmt, reload, pName, cName, cus
                 headers={["Who", "Target", "Discount", "Status"]}
                 loading={loading} count={rows.length} onNew={openNew}
                 empty={<p className="text-muted-foreground text-sm">No customer pricing. Set a gold-tier rate or a per-customer price.</p>}
+                pagination={<Pagination page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage} total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize} />}
             >
-                {rows.map((r) => (
+                {pg.pageItems.map((r) => (
                     <TableRow key={r.id}>
                         <TableCell className="pl-6">
                             {r.customer_id ? custName(r.customer_id) : <span className="capitalize">{r.loyalty_tier} tier</span>}

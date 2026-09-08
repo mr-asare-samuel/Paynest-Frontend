@@ -23,6 +23,8 @@ import { DatePicker } from "antd";
 import dayjs from "dayjs";
 import { toast } from "sonner";
 import PageHeader from "@/components/(shared-components)/PageHeader";
+import Pagination from "@/components/(shared-components)/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/(zustand-store)/authStore";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -132,6 +134,8 @@ export default function BatchesPage() {
         }
     };
 
+    const pg = usePagination(rows, 10);
+
     if (!user || !isAllowed) {
         return <div className="flex items-center justify-center py-24"><Skeleton className="size-6 rounded-full" /></div>;
     }
@@ -203,7 +207,7 @@ export default function BatchesPage() {
                                         </p>
                                     </TableCell>
                                 </TableRow>
-                            ) : rows.map((b) => {
+                            ) : pg.pageItems.map((b) => {
                                 const d = daysUntil(b.expiry_date);
                                 return (
                                     <TableRow key={b.id}>
@@ -236,6 +240,11 @@ export default function BatchesPage() {
                         </TableBody>
                     </Table>
                 </div>
+                {!loading && rows.length > 0 && (
+                    <div className="border-border bg-muted/30 border-t px-4 py-3">
+                        <Pagination page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage} total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize} />
+                    </div>
+                )}
             </Card>
 
             <Dialog open={dialogOpen} onOpenChange={(o) => !o && setDialogOpen(false)}>

@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { motion } from 'framer-motion';
 import {
     getSuperAdminDashboard,
     getSuperAdminSystemHealth,
@@ -12,26 +13,26 @@ import {
 import {
     SuperAdminDashboardResponse,
     OrgMetrics,
-    PlatformTrend,
     SystemHealth,
     TopProduct,
     UserWithoutProfile,
 } from '@/interfaces/superadminDashboard';
 import {
-    Building2, Users, ShoppingCart, DollarSign,
-    Store, TrendingUp, Activity, RefreshCcw,
-    ArrowUpRight, UserPlus, BadgeCheck, CheckCircle2,
+    Building2, Users, Store, ShoppingCart, DollarSign,
+    TrendingUp, TrendingDown, Activity, RefreshCcw,
+    ArrowUpRight, UserPlus, BadgeCheck, CheckCircle2, CalendarDays,
     XCircle, Medal, Server, Database, Clock, Wifi,
     Package, AlertCircle, UserX, AlertTriangle,
-    BarChart2, Sparkles, Wallet,
+    BarChart2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import {
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import PageHeader from '@/components/(shared-components)/PageHeader';
 import StatsGrid from '@/components/(shared-components)/StatsGrid';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/currency';
@@ -53,14 +54,17 @@ const Tooltip             = dynamic(() => import('recharts').then(m => m.Tooltip
 const ResponsiveContainer = dynamic(() => import('recharts').then(m => m.ResponsiveContainer), { ssr: false });
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-const RANGES = [
-    { label: '7D',  days: 7  },
-    { label: '30D', days: 30 },
-    { label: '90D', days: 90 },
+const PERIODS = [
+    { value: '7',  label: 'Last 7 days'  },
+    { value: '30', label: 'Last 30 days' },
+    { value: '90', label: 'Last 90 days' },
+    { value: 'custom', label: 'Custom range' },
 ];
 
-const CHART_PRIMARY = 'var(--primary)';
-const CHART_INFO    = 'var(--info)';
+const CHART_INFO = 'var(--info)';
+
+const deltaPct = (cur: number, prev: number) =>
+    prev > 0 ? ((cur - prev) / prev) * 100 : cur > 0 ? 100 : 0;
 
 const PIE_PALETTE = [
     'var(--muted-foreground)',
@@ -70,8 +74,6 @@ const PIE_PALETTE = [
 ];
 
 const PLAN_ORDER = ['FREE', 'BASIC', 'PRO', 'ENTERPRISE'];
-
-const CTA_GRADIENT = 'linear-gradient(135deg, #a47451 0.000%, #9c9881 16.667%, #73a09d 33.333%, #3b899a 50.000%, #095b79 66.667%, #002847 83.333%, #000116 100.000%)';
 
 const PLAN_BADGE: Record<string, string> = {
     free:       'border-border bg-muted text-muted-foreground',
@@ -129,200 +131,102 @@ function ChartTooltip({ active, payload, label }: {
     );
 }
 
-// ─── Hero metric cell ─────────────────────────────────────────────────────────
-function HeroMetric({
-    icon: Icon, label, value, sub, loading, accent,
+// ─── Delta chip ──────────────────────────────────────────────────────────────
+function Delta({ pct, suffix = 'vs prev period' }: { pct: number; suffix?: string }) {
+    const up = pct >= 0;
+    const Icon = up ? TrendingUp : TrendingDown;
+    return (
+        <span className="inline-flex items-center gap-1 text-xs">
+            <span className={cn('inline-flex items-center gap-0.5 font-semibold', up ? 'text-success' : 'text-destructive')}>
+                <Icon className="size-3.5" />
+                {up ? '+' : ''}{pct.toFixed(1)}%
+            </span>
+            <span className="text-muted-foreground">{suffix}</span>
+        </span>
+    );
+}
+
+// ─── KPI card with optional sparkline ────────────────────────────────────────
+function KpiCard({
+    icon: Icon, label, value, sub, pct, spark, tone = 'primary', loading,
 }: {
     icon: React.ElementType;
     label: string;
     value: string;
     sub?: string;
+    pct?: number;
+    spark?: number[];
+    tone?: 'primary' | 'success' | 'info';
     loading?: boolean;
-    accent?: string;
 }) {
+    const stroke = tone === 'success' ? 'var(--success)' : tone === 'info' ? 'var(--info)' : 'var(--primary)';
+    const data = (spark ?? []).map((v, i) => ({ i, v }));
     return (
-        <div className="flex flex-col gap-2 px-6 py-1 first:pl-0 last:pr-0">
-            <div className={cn('flex items-center gap-1.5 text-xs font-medium', accent ?? 'text-muted-foreground')}>
-                <Icon className="size-3.5 shrink-0" />
-                {label}
+        <Card className="gap-0 overflow-hidden p-5">
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
+                        <Icon className="size-3.5 shrink-0" /> {label}
+                    </p>
+                    {loading
+                        ? <Skeleton className="mt-2 h-7 w-24" />
+                        : <p className="text-foreground mt-1.5 text-2xl font-bold leading-none tracking-tight num-tabular">{value}</p>}
+                </div>
+                {!loading && data.length > 1 && (
+                    <div className="h-10 w-24 shrink-0">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={data} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                                <defs>
+                                    <linearGradient id={`sa-spark-${label}`} x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor={stroke} stopOpacity={0.25} />
+                                        <stop offset="100%" stopColor={stroke} stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <Area type="monotone" dataKey="v" stroke={stroke} strokeWidth={1.75}
+                                    fill={`url(#sa-spark-${label})`} dot={false} isAnimationActive={false} />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                )}
             </div>
-            {loading ? (
-                <Skeleton className="h-7 w-24" />
-            ) : (
-                <p className="text-[22px] font-bold text-foreground leading-none">{value}</p>
-            )}
-            {sub && !loading && (
-                <p className="text-[11px] text-muted-foreground">{sub}</p>
-            )}
-            {loading && <Skeleton className="h-3 w-16" />}
-        </div>
+            <div className="mt-3">
+                {loading
+                    ? <Skeleton className="h-4 w-32" />
+                    : pct !== undefined
+                        ? <Delta pct={pct} suffix={sub ?? 'vs prev period'} />
+                        : sub && <span className="text-muted-foreground text-xs">{sub}</span>}
+            </div>
+        </Card>
     );
 }
 
-// ─── Platform CTA — hero banner with phone mockup ──────────────────────────────
-function PlatformCTA({
-    revenue, orders, organizations, topOrgName, loading,
-}: {
-    revenue: string;
-    orders: string;
-    organizations: string;
-    topOrgName: string;
-    loading: boolean;
-}) {
+// ─── Interactive overview bar shape + tooltip ────────────────────────────────
+type BarShapeProps = { x?: number; y?: number; width?: number; height?: number; index?: number };
+function renderOverviewBar(props: BarShapeProps, activeIndex: number) {
+    const { x = 0, y = 0, width = 0, height = 0, index = 0 } = props;
+    const active = index === activeIndex;
+    const r = Math.min(6, width / 2);
     return (
-        <div className="relative overflow-hidden rounded-[2rem] text-white" style={{ background: CTA_GRADIENT }}>
-            <style>{`
-                @keyframes pcta-a { 0%,100%{transform:translateY(0) rotate(-6deg)} 50%{transform:translateY(-9px) rotate(-6deg)} }
-                @keyframes pcta-b { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-7px)} }
-                @keyframes pcta-c { 0%,100%{transform:translateY(0) rotate(7deg)} 50%{transform:translateY(-6px) rotate(7deg)} }
-                .pcta-card-a { animation: pcta-a 6s ease-in-out infinite; }
-                .pcta-card-b { animation: pcta-b 5s ease-in-out infinite; animation-delay: .8s; }
-                .pcta-card-c { animation: pcta-c 7s ease-in-out infinite; animation-delay: 1.4s; }
-            `}</style>
+        <rect
+            x={x} y={y} width={width} height={Math.max(height, 2)} rx={r} ry={r}
+            fill={active ? 'var(--primary)' : 'url(#saBarHatch)'}
+            stroke={active ? 'transparent' : 'var(--border)'}
+            strokeWidth={active ? 0 : 1}
+        />
+    );
+}
 
-            {/* Ambient glow */}
-            <div className="pointer-events-none absolute -top-16 -right-10 size-72 rounded-full bg-white/10 blur-3xl" />
-            <div className="pointer-events-none absolute -bottom-16 left-10 size-56 rounded-full bg-black/20 blur-3xl" />
-
-            <div className="relative flex flex-col items-center gap-10 px-8 py-12 md:flex-row md:justify-between md:px-14 md:py-14">
-                {/* ── Left: copy + CTA ─────────────────────────────────── */}
-                <div className="max-w-md text-center md:text-left">
-                    <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide text-white/80 uppercase">
-                        <span className="relative flex size-1.5">
-                            <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                            <span className="relative inline-flex size-1.5 rounded-full bg-emerald-400" />
-                        </span>
-                        Live Platform Insights
-                    </div>
-                    <h2 className="text-3xl leading-[1.1] font-bold tracking-tight md:text-[2.5rem]">
-                        Every organization.<br />One clear view.
-                    </h2>
-                    <p className="mt-4 text-sm leading-relaxed text-white/60 md:text-[15px]">
-                        Track revenue, orders, and organization health across your entire
-                        network — all from a single command center, updated in real time.
-                    </p>
-                    <div className="mt-7 flex flex-col items-center gap-3 sm:flex-row md:justify-start">
-                        <Link
-                            href="/organizations"
-                            className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-neutral-900 transition hover:bg-white/90"
-                        >
-                            View Organizations
-                            <ArrowUpRight className="size-4" />
-                        </Link>
-                        <Link
-                            href="/users"
-                            className="inline-flex items-center gap-2 rounded-full border border-white/20 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
-                        >
-                            Check out users
-                        </Link>
-                    </div>
-                </div>
-
-                {/* ── Right: phone mockup + floating cards ────────────────── */}
-                <div className="relative h-[300px] w-[260px] shrink-0 sm:h-[340px] sm:w-[300px]">
-                    {/* Dark org card — peeking out behind the phone */}
-                    <div
-                        className="pcta-card-c absolute right-0 bottom-8 z-0 w-44 rounded-2xl border border-white/10 bg-neutral-900/90 p-4 shadow-2xl backdrop-blur-sm"
-                    >
-                        <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-bold tracking-wide text-white/70">PAYNEST</span>
-                            <Wallet className="size-3.5 text-white/50" />
-                        </div>
-                        <p className="mt-5 truncate text-sm font-semibold text-white">
-                            {loading ? '—' : topOrgName}
-                        </p>
-                        <p className="mt-0.5 text-[11px] text-white/40">Top performing org</p>
-                    </div>
-
-                    {/* Phone mockup — grounding shadow */}
-                    <div className="absolute top-[300px] right-6 z-0 h-6 w-[110px] rounded-full bg-black/50 blur-xl sm:top-[340px] sm:w-[125px]" />
-
-                    {/* Phone mockup — titanium frame */}
-                    <div
-                        className="absolute top-2 right-6 z-10 h-[290px] w-[148px] rotate-[7deg] rounded-[2.75rem] p-[3px] shadow-2xl sm:h-[330px] sm:w-[168px]"
-                        style={{
-                            background: 'linear-gradient(155deg, #6b6b6e 0%, #2b2b2d 22%, #131314 55%, #3a3a3c 78%, #101011 100%)',
-                            boxShadow: '0 30px 60px -15px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.08)',
-                        }}
-                    >
-                        {/* Side controls */}
-                        <div className="absolute top-14 -left-[2px] h-4 w-[3px] rounded-l-sm bg-neutral-600/90" />
-                        <div className="absolute top-20 -left-[2px] h-8 w-[3px] rounded-l-sm bg-neutral-600/90" />
-                        <div className="absolute top-[7.5rem] -left-[2px] h-8 w-[3px] rounded-l-sm bg-neutral-600/90" />
-                        <div className="absolute top-24 -right-[2px] h-11 w-[3px] rounded-r-sm bg-neutral-600/90" />
-
-                        <div className="relative h-full w-full overflow-hidden rounded-[2.5rem] bg-black p-1.5">
-                            <div className="relative flex h-full w-full flex-col overflow-hidden rounded-[2.1rem] bg-neutral-950 px-3.5 pt-7 pb-3">
-                                {/* Dynamic island */}
-                                <div className="absolute top-2 left-1/2 z-30 h-[15px] w-[62px] -translate-x-1/2 rounded-full bg-black" />
-
-                                <p className="text-[9px] text-white/40">Welcome back</p>
-                                <p className="text-[11px] font-semibold text-white">SuperAdmin</p>
-
-                                <p className="mt-4 text-[9px] text-white/40">Platform Revenue</p>
-                                <p className="text-[17px] leading-tight font-bold text-white">
-                                    {loading ? '—' : revenue}
-                                </p>
-
-                                <svg className="mt-2 w-full" height="28" viewBox="0 0 140 28" fill="none">
-                                    <path
-                                        d="M0 22 Q15 22 24 16 Q36 10 48 14 Q63 18 75 9 Q86 2 100 6 Q114 10 124 4 Q132 0 140 3"
-                                        stroke="white" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.55"
-                                    />
-                                    <circle cx="124" cy="4" r="2.5" fill="white" opacity="0.8" />
-                                </svg>
-
-                                <div className="mt-3 space-y-1.5 border-t border-white/10 pt-2.5">
-                                    {[
-                                        { label: 'Orders', value: orders },
-                                        { label: 'Organizations', value: organizations },
-                                    ].map(row => (
-                                        <div key={row.label} className="flex items-center justify-between">
-                                            <span className="text-[9px] text-white/40">{row.label}</span>
-                                            <span className="text-[10px] font-semibold text-white">
-                                                {loading ? '—' : row.value}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                {/* Glass glare */}
-                                <div className="pointer-events-none absolute inset-0 rounded-[2.1rem] bg-gradient-to-br from-white/[0.08] via-transparent to-transparent" />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Floating revenue card */}
-                    <div
-                        className="pcta-card-a absolute top-3 -left-2 z-20 w-36 rounded-2xl bg-white p-3.5 text-neutral-900 shadow-2xl sm:w-40"
-                    >
-                        <p className="text-[9px] font-semibold tracking-widest text-neutral-400 uppercase">
-                            Total Revenue
-                        </p>
-                        <p className="mt-1 text-[17px] leading-none font-bold">
-                            {loading ? '—' : revenue}
-                        </p>
-                        <div className="mt-2 flex items-center gap-1.5">
-                            <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600">
-                                <TrendingUp className="-mt-0.5 inline size-2.5" /> live
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* Floating orders badge */}
-                    <div
-                        className="pcta-card-b absolute bottom-2 -left-4 z-20 flex items-center gap-2 rounded-full bg-white py-2 pr-3.5 pl-2 text-neutral-900 shadow-xl"
-                    >
-                        <span className="flex size-6 items-center justify-center rounded-full bg-neutral-900 text-white">
-                            <Sparkles className="size-3" />
-                        </span>
-                        <div className="leading-none">
-                            <p className="text-[12px] font-bold">{loading ? '—' : orders}</p>
-                            <p className="text-[9px] text-neutral-400">orders total</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+function OverviewTip({ active, payload, label }: {
+    active?: boolean;
+    payload?: { value: number; payload: { orders: number } }[];
+    label?: string;
+}) {
+    if (!active || !payload?.length) return null;
+    return (
+        <div className="bg-foreground text-background rounded-xl px-3 py-2 text-center shadow-xl">
+            <p className="text-background/60 text-[10px] font-medium uppercase tracking-wide">{label}</p>
+            <p className="mt-0.5 text-sm font-bold num-tabular">{fmtShort(payload[0].value)}</p>
+            <p className="text-background/60 mt-0.5 text-[10px]">{payload[0].payload.orders.toLocaleString()} orders</p>
         </div>
     );
 }
@@ -712,9 +616,10 @@ function UsersWithoutProfileCard({ users, loading }: { users: UserWithoutProfile
 // ─── Main component ───────────────────────────────────────────────────────────
 export const SuperAdminView = () => {
     const [data, setData]             = useState<SuperAdminDashboardResponse | null>(null);
+    const [prev, setPrev]             = useState<SuperAdminDashboardResponse | null>(null);
     const [loading, setLoading]       = useState(true);
-    const [range, setRange]           = useState(30);
-    const [customDates, setCustomDates] = useState<[Dayjs, Dayjs] | null>(null);
+    const [period, setPeriod]         = useState('30');
+    const [customRange, setCustomRange] = useState<[Dayjs, Dayjs] | null>(null);
 
     const [health, setHealth]                   = useState<SystemHealth | null>(null);
     const [healthLoading, setHealthLoading]     = useState(true);
@@ -723,70 +628,109 @@ export const SuperAdminView = () => {
     const [usersNoProfile, setUsersNoProfile]   = useState<UserWithoutProfile[]>([]);
     const [usersLoading, setUsersLoading]       = useState(true);
 
-    const load = useCallback(async (days: number, custom?: [Dayjs, Dayjs]) => {
+    const [hoverBar, setHoverBar]   = useState<number | null>(null);
+    const [pinnedBar, setPinnedBar] = useState<number | null>(null);
+
+    // Effective window (strings keep the effect stable)
+    const { startStr, endStr, spanDays } = useMemo(() => {
+        const end   = period === 'custom' && customRange ? customRange[1] : dayjs();
+        const start = period === 'custom' && customRange ? customRange[0] : dayjs().subtract(Number(period) || 30, 'day');
+        return {
+            startStr: start.format('YYYY-MM-DD'),
+            endStr:   end.format('YYYY-MM-DD'),
+            spanDays: Math.max(1, end.diff(start, 'day')),
+        };
+    }, [period, customRange]);
+
+    const loadHealthAndUsers = useCallback(() => {
+        setHealthLoading(true);
+        getSuperAdminSystemHealth().then(setHealth).catch(() => setHealth(null)).finally(() => setHealthLoading(false));
+        setUsersLoading(true);
+        getSuperAdminUsersWithoutProfile().then(setUsersNoProfile).catch(() => setUsersNoProfile([])).finally(() => setUsersLoading(false));
+    }, []);
+
+    const load = useCallback(async (sStr: string, eStr: string) => {
         setLoading(true);
+        setProductsLoading(true);
         try {
-            let startStr: string, endStr: string;
-            if (custom) {
-                startStr = custom[0].format('YYYY-MM-DD');
-                endStr   = custom[1].format('YYYY-MM-DD');
-            } else {
-                const end   = new Date();
-                const start = new Date();
-                start.setDate(end.getDate() - days);
-                startStr = start.toISOString().split('T')[0];
-                endStr   = end.toISOString().split('T')[0];
-            }
-            const [dashboardData, productsData] = await Promise.allSettled([
-                getSuperAdminDashboard(startStr, endStr),
-                getSuperAdminTopProducts(startStr, endStr, 10),
+            const start = dayjs(sStr), end = dayjs(eStr);
+            const span = Math.max(1, end.diff(start, 'day'));
+            const prevEnd = start.subtract(1, 'day');
+            const prevStart = prevEnd.subtract(span, 'day');
+            const iso = (d: Dayjs) => d.format('YYYY-MM-DD');
+            const [cur, prv, products] = await Promise.allSettled([
+                getSuperAdminDashboard(sStr, eStr),
+                getSuperAdminDashboard(iso(prevStart), iso(prevEnd)),
+                getSuperAdminTopProducts(sStr, eStr, 10),
             ]);
-            if (dashboardData.status === 'fulfilled') setData(dashboardData.value);
-            if (productsData.status === 'fulfilled') setTopProducts(productsData.value);
-            else setTopProducts([]);
+            setData(cur.status === 'fulfilled' ? cur.value : null);
+            setPrev(prv.status === 'fulfilled' ? prv.value : null);
+            setTopProducts(products.status === 'fulfilled' ? products.value : []);
         } catch {
-            // silent — dashboard is best-effort
+            // best-effort — dashboard is informational
         } finally {
             setLoading(false);
             setProductsLoading(false);
         }
     }, []);
 
-    useEffect(() => {
-        if (customDates) load(0, customDates);
-        else load(range);
-    }, [load, range, customDates]);
+    useEffect(() => { load(startStr, endStr); }, [load, startStr, endStr]);
+    useEffect(() => { loadHealthAndUsers(); }, [loadHealthAndUsers]);
 
-    useEffect(() => {
-        setHealthLoading(true);
-        getSuperAdminSystemHealth()
-            .then(setHealth)
-            .catch(() => setHealth(null))
-            .finally(() => setHealthLoading(false));
-    }, []);
-
-    useEffect(() => {
-        setUsersLoading(true);
-        getSuperAdminUsersWithoutProfile()
-            .then(setUsersNoProfile)
-            .catch(() => setUsersNoProfile([]))
-            .finally(() => setUsersLoading(false));
-    }, []);
+    const onPeriodChange = (v: string) => {
+        setPeriod(v);
+        if (v === 'custom' && !customRange) setCustomRange([dayjs().subtract(30, 'day'), dayjs()]);
+    };
 
     const s = data?.summary;
+    const ps = prev?.summary;
+    const range = spanDays;
 
     // ── Trend data ─────────────────────────────────────────────────────────────
-    const trendData: (PlatformTrend & { date: string })[] = (data?.platform_trends ?? []).map(t => ({
-        ...t,
+    const trends = useMemo(() => (data?.platform_trends ?? []).map(t => ({
         date: new Date(t.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
         revenue: Number(t.revenue.toFixed(2)),
-    }));
+        orders: t.orders,
+    })), [data]);
 
-    const visibleTrend = range > 30
-        ? trendData.filter((_, i) => i % 3 === 0)
-        : range > 14
-            ? trendData.filter((_, i) => i % 2 === 0)
-            : trendData;
+    const visibleTrend = spanDays > 30
+        ? trends.filter((_, i) => i % 3 === 0)
+        : spanDays > 14
+            ? trends.filter((_, i) => i % 2 === 0)
+            : trends;
+
+    const revSpark = trends.map(t => t.revenue);
+    const ordSpark = trends.map(t => t.orders);
+
+    // Bucket daily trend into ≤ 12 fat bars for the interactive overview
+    const buckets = useMemo(() => {
+        const src = data?.platform_trends ?? [];
+        if (!src.length) return [] as { label: string; value: number; orders: number }[];
+        const count = Math.min(12, src.length);
+        const size = Math.max(1, Math.ceil(src.length / count));
+        const out: { label: string; value: number; orders: number }[] = [];
+        for (let i = 0; i < src.length; i += size) {
+            const slice = src.slice(i, i + size);
+            out.push({
+                label: dayjs(slice[0].date).format(size > 1 ? 'MMM D' : 'ddd D'),
+                value: Number(slice.reduce((a, t) => a + t.revenue, 0).toFixed(2)),
+                orders: slice.reduce((a, t) => a + t.orders, 0),
+            });
+        }
+        return out;
+    }, [data]);
+
+    const maxBucket = useMemo(() => {
+        if (!buckets.length) return 0;
+        let mi = 0;
+        buckets.forEach((b, i) => { if (b.value > buckets[mi].value) mi = i; });
+        return mi;
+    }, [buckets]);
+    const activeBar = hoverBar ?? pinnedBar ?? maxBucket;
+
+    const revenueDelta = deltaPct(s?.total_revenue ?? 0, ps?.total_revenue ?? 0);
+    const avgPerDay = s ? s.total_revenue / spanDays : 0;
+    const avgOrderValue = s && s.total_orders > 0 ? fmtShort(s.total_revenue / s.total_orders) : '—';
 
     // ── Plan distribution ──────────────────────────────────────────────────────
     const planData = PLAN_ORDER.map((plan, i) => {
@@ -805,218 +749,161 @@ export const SuperAdminView = () => {
         orders:  o.total_orders,
     }));
 
-    const avgOrderValue = s && s.total_orders > 0
-        ? fmtShort(s.total_revenue / s.total_orders)
-        : '—';
+    const periodControls = (
+        <div className="flex flex-wrap items-center gap-2">
+            <Select value={period} onValueChange={onPeriodChange}>
+                <SelectTrigger className="h-9 w-[168px]">
+                    <CalendarDays className="text-muted-foreground mr-1 size-4" />
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="end">
+                    {PERIODS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+                </SelectContent>
+            </Select>
+            {period === 'custom' && (
+                <DatePicker.RangePicker
+                    value={customRange}
+                    onChange={d => { if (d?.[0] && d?.[1]) setCustomRange([d[0], d[1]]); }}
+                    format="DD MMM YYYY"
+                    allowClear={false}
+                    disabledDate={d => !!d && d.isAfter(dayjs(), 'day')}
+                    className="h-9"
+                />
+            )}
+            <Button
+                variant="outline"
+                size="icon"
+                className="size-9"
+                onClick={() => { load(startStr, endStr); loadHealthAndUsers(); }}
+                aria-label="Refresh dashboard"
+            >
+                <RefreshCcw className={cn('size-4', loading && 'animate-spin')} />
+            </Button>
+        </div>
+    );
 
     return (
         <div className="flex flex-col gap-6">
-            {/* ── Page Header ────────────────────────────────────────────────── */}
-            <PageHeader
-                title="Platform Overview"
-                description="System-wide analytics across all organizations"
-                separator={false}
-                actions={
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <ToggleGroup
-                            type="single"
-                            value={customDates ? 'custom' : String(range)}
-                            onValueChange={v => {
-                                if (!v || v === 'custom') return;
-                                setCustomDates(null);
-                                setRange(Number(v));
-                            }}
-                            variant="outline"
-                            size="sm"
+            {/* ── Greeting ───────────────────────────────────────────────────── */}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <h1 className="text-h2 text-foreground flex items-center gap-2">
+                        Platform overview
+                        <motion.span
+                            aria-hidden
+                            animate={{ rotate: [0, 16, -8, 16, 0] }}
+                            transition={{ duration: 1.4, repeat: Infinity, repeatDelay: 2.5, ease: 'easeInOut' }}
+                            style={{ display: 'inline-block', transformOrigin: '70% 70%' }}
                         >
-                            {RANGES.map(r => (
-                                <ToggleGroupItem key={r.days} value={String(r.days)}>
-                                    {r.label}
-                                </ToggleGroupItem>
-                            ))}
-                            <ToggleGroupItem
-                                value="custom"
-                                className={cn(customDates && 'bg-primary text-primary-foreground hover:bg-primary/90')}
-                            >
-                                Custom
-                            </ToggleGroupItem>
-                        </ToggleGroup>
-
-                        {customDates !== null && (
-                            <DatePicker.RangePicker
-                                value={customDates}
-                                onChange={dates => {
-                                    if (dates?.[0] && dates?.[1]) setCustomDates([dates[0], dates[1]]);
-                                    else setCustomDates(null);
-                                }}
-                                format="DD MMM YYYY"
-                                size="small"
-                                allowClear={false}
-                            />
-                        )}
-
-                        {customDates === null && (
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-muted-foreground h-8 px-2 text-xs"
-                                onClick={() => setCustomDates([dayjs().subtract(range, 'day'), dayjs()])}
-                            >
-                                Custom…
-                            </Button>
-                        )}
-
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            className="size-9"
-                            onClick={() => {
-                                if (customDates) load(0, customDates); else load(range);
-                                setHealthLoading(true);
-                                getSuperAdminSystemHealth().then(setHealth).catch(() => setHealth(null)).finally(() => setHealthLoading(false));
-                                setUsersLoading(true);
-                                getSuperAdminUsersWithoutProfile().then(setUsersNoProfile).catch(() => setUsersNoProfile([])).finally(() => setUsersLoading(false));
-                            }}
-                            aria-label="Refresh dashboard"
-                        >
-                            <RefreshCcw className={cn('size-4', loading && 'animate-spin')} />
-                        </Button>
-                    </div>
-                }
-            />
-
-            {/* ── CTA banner ─────────────────────────────────────────────────── */}
-            <PlatformCTA
-                revenue={s ? fmtShort(s.total_revenue) : '—'}
-                orders={s ? s.total_orders.toLocaleString() : '—'}
-                organizations={s ? s.total_organizations.toLocaleString() : '—'}
-                topOrgName={topOrgs[0]?.name ?? 'No data yet'}
-                loading={loading}
-            />
-
-            {/* ── Hero stats strip ───────────────────────────────────────────── */}
-            <Card className="relative overflow-hidden border-primary/15 bg-gradient-to-br from-primary/[0.06] to-transparent p-0">
-                {/* Decorative blobs */}
-                <div className="pointer-events-none absolute inset-0">
-                    <div className="absolute -top-10 -right-10 size-52 rounded-full bg-primary/5 blur-3xl" />
-                    <div className="absolute -bottom-8 left-1/4 size-40 rounded-full bg-info/5 blur-3xl" />
+                            👋
+                        </motion.span>
+                    </h1>
+                    <p className="text-body-sm text-muted-foreground mt-1">
+                        Revenue, orders and system health across every organization on Paynest.
+                    </p>
                 </div>
-                <CardContent className="relative px-6 py-6">
-                    <div className="grid grid-cols-2 gap-y-6 sm:grid-cols-3 lg:grid-cols-5 lg:divide-x lg:divide-border/50 lg:gap-y-0">
-                        <HeroMetric
-                            icon={DollarSign}
-                            label="Platform Revenue"
-                            value={s ? fmtShort(s.total_revenue) : '—'}
-                            sub={`${customDates ? 'Custom range' : `${range}d window`}`}
-                            loading={loading}
-                            accent="text-primary"
-                        />
-                        <HeroMetric
-                            icon={ShoppingCart}
-                            label="Total Orders"
-                            value={s ? s.total_orders.toLocaleString() : '—'}
-                            sub={`Avg ${avgOrderValue} per order`}
-                            loading={loading}
-                        />
-                        <HeroMetric
-                            icon={Building2}
-                            label="Organizations"
-                            value={s ? s.total_organizations.toLocaleString() : '—'}
-                            sub={s ? `${s.active_organizations} active · +${s.new_orgs_in_period} new` : undefined}
-                            loading={loading}
-                        />
-                        <HeroMetric
-                            icon={Users}
-                            label="Total Users"
-                            value={s ? s.total_users.toLocaleString() : '—'}
-                            sub={s ? `${s.active_users} active · +${s.new_users_in_period} new` : undefined}
-                            loading={loading}
-                        />
-                        <HeroMetric
-                            icon={Store}
-                            label="Total Shops"
-                            value={s ? s.total_shops.toLocaleString() : '—'}
-                            sub="Across all organizations"
-                            loading={loading}
-                        />
-                    </div>
-                </CardContent>
-            </Card>
+                {periodControls}
+            </div>
 
-            {/* ── Revenue trend — centrepiece ────────────────────────────────── */}
-            <Card className="gap-0 overflow-hidden p-0">
-                <CardHeader className="border-b px-6 py-5">
-                    <div className="flex items-start justify-between gap-4 flex-wrap">
-                        <div>
-                            <p className="text-xs text-muted-foreground mb-1.5">Total Platform Revenue</p>
-                            {loading ? (
-                                <Skeleton className="h-9 w-40 mb-2" />
-                            ) : (
-                                <p className="text-3xl font-bold text-foreground leading-none">
-                                    {fmtShort(s?.total_revenue ?? 0)}
-                                </p>
-                            )}
-                            <p className="text-xs text-muted-foreground mt-2">
-                                {loading ? '' : `${(s?.total_orders ?? 0).toLocaleString()} orders · avg ${avgOrderValue} per order`}
-                            </p>
+            {/* ── KPI row ────────────────────────────────────────────────────── */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <KpiCard icon={DollarSign} loading={loading} label="Platform revenue"
+                    value={s ? fmtShort(s.total_revenue) : '—'} pct={revenueDelta} spark={revSpark} tone="primary" />
+                <KpiCard icon={ShoppingCart} loading={loading} label="Orders"
+                    value={s ? s.total_orders.toLocaleString() : '—'}
+                    pct={deltaPct(s?.total_orders ?? 0, ps?.total_orders ?? 0)} spark={ordSpark} tone="info" />
+                <KpiCard icon={Building2} loading={loading} label="Organizations"
+                    value={s ? s.total_organizations.toLocaleString() : '—'}
+                    pct={deltaPct(s?.new_orgs_in_period ?? 0, ps?.new_orgs_in_period ?? 0)}
+                    sub={s ? `${s.active_organizations} active · +${s.new_orgs_in_period} new` : 'new orgs vs prev'}
+                    tone="success" />
+                <KpiCard icon={Users} loading={loading} label="Users"
+                    value={s ? s.total_users.toLocaleString() : '—'}
+                    pct={deltaPct(s?.new_users_in_period ?? 0, ps?.new_users_in_period ?? 0)}
+                    sub={s ? `${s.active_users} active · +${s.new_users_in_period} new` : 'new users vs prev'}
+                    tone="primary" />
+            </div>
+
+            {/* ── Quick facts ────────────────────────────────────────────────── */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {[
+                    { icon: Store, label: 'Total shops', value: s ? s.total_shops.toLocaleString() : '—' },
+                    { icon: ShoppingCart, label: 'Avg order value', value: avgOrderValue },
+                    { icon: Building2, label: 'Avg revenue / org', value: s && s.active_organizations > 0 ? fmtShort(s.total_revenue / s.active_organizations) : '—' },
+                    { icon: Users, label: 'Avg users / org', value: s && s.total_organizations > 0 ? (s.total_users / s.total_organizations).toFixed(1) : '—' },
+                ].map(({ icon: Icon, label, value }) => (
+                    <Card key={label} className="flex flex-row items-center gap-3 p-4">
+                        <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-lg">
+                            <Icon className="text-muted-foreground size-4" />
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="border-success/30 bg-success/10 text-success text-xs font-medium">
-                                <TrendingUp className="size-3 mr-1" /> Revenue Trend
-                            </Badge>
+                        <div className="min-w-0">
+                            <p className="text-muted-foreground truncate text-xs">{label}</p>
+                            {loading
+                                ? <Skeleton className="mt-1 h-5 w-16" />
+                                : <p className="text-foreground num-tabular truncate text-base font-bold">{value}</p>}
+                        </div>
+                    </Card>
+                ))}
+            </div>
+
+            {/* ── Interactive revenue overview ───────────────────────────────── */}
+            <Card className="gap-0 overflow-hidden p-5">
+                <div className="flex items-start justify-between gap-4">
+                    <div>
+                        <p className="text-foreground text-sm font-semibold">Revenue overview</p>
+                        <p className="text-muted-foreground mt-0.5 text-xs">Avg per day</p>
+                        <div className="mt-1.5 flex items-center gap-2">
+                            {loading ? <Skeleton className="h-8 w-32" /> : (
+                                <span className="text-foreground text-2xl font-bold tracking-tight num-tabular">{fmtShort(avgPerDay)}</span>
+                            )}
+                            {!loading && (
+                                <span className={cn(
+                                    'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-semibold',
+                                    revenueDelta >= 0 ? 'bg-success-muted text-success' : 'bg-destructive/10 text-destructive',
+                                )}>
+                                    {revenueDelta >= 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
+                                    {Math.abs(revenueDelta).toFixed(1)}%
+                                </span>
+                            )}
                         </div>
                     </div>
-                </CardHeader>
-                <CardContent className="p-0">
+                    <Select value={period} onValueChange={onPeriodChange}>
+                        <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent align="end">
+                            {PERIODS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="mt-4 h-64" onMouseLeave={() => setHoverBar(null)}>
                     {loading ? (
-                        <div className="px-6 pb-6 pt-4">
-                            <Skeleton className="h-72 w-full rounded-xl" />
-                        </div>
-                    ) : visibleTrend.length === 0 ? (
-                        <div className="flex h-72 items-center justify-center text-muted-foreground text-sm">
-                            No trend data for selected period
-                        </div>
+                        <Skeleton className="h-full w-full rounded-lg" />
+                    ) : buckets.length === 0 ? (
+                        <div className="text-muted-foreground flex h-full items-center justify-center text-sm">No revenue in this period</div>
                     ) : (
-                        <div className="h-72 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={visibleTrend} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
-                                    <defs>
-                                        <linearGradient id="saRevGrad" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="0%"   stopColor={CHART_PRIMARY} stopOpacity={0.35} />
-                                            <stop offset="100%" stopColor={CHART_PRIMARY} stopOpacity={0} />
-                                        </linearGradient>
-                                    </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                                    <XAxis
-                                        dataKey="date"
-                                        tick={axisStyle}
-                                        axisLine={false}
-                                        tickLine={false}
-                                        interval="preserveStartEnd"
-                                        padding={{ left: 16, right: 16 }}
-                                    />
-                                    <YAxis
-                                        tick={axisStyle}
-                                        axisLine={false}
-                                        tickLine={false}
-                                        width={60}
-                                        tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v}
-                                    />
-                                    <Tooltip content={<ChartTooltip />} />
-                                    <Area
-                                        type="monotone"
-                                        dataKey="revenue"
-                                        stroke={CHART_PRIMARY}
-                                        strokeWidth={2.5}
-                                        fill="url(#saRevGrad)"
-                                        dot={false}
-                                        activeDot={{ r: 5, fill: CHART_PRIMARY, strokeWidth: 0 }}
-                                    />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        </div>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={buckets} margin={{ top: 24, right: 4, left: 4, bottom: 0 }} barCategoryGap="22%">
+                                <defs>
+                                    <pattern id="saBarHatch" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+                                        <rect width="6" height="6" fill="var(--muted)" />
+                                        <line x1="0" y1="0" x2="0" y2="6" stroke="var(--border)" strokeWidth="3" />
+                                    </pattern>
+                                </defs>
+                                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
+                                <XAxis dataKey="label" tickLine={false} axisLine={false}
+                                    tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} interval="preserveStartEnd" />
+                                <Tooltip cursor={false} isAnimationActive={false} content={<OverviewTip />} />
+                                <Bar
+                                    dataKey="value"
+                                    onMouseEnter={(_: unknown, i: number) => setHoverBar(i)}
+                                    onClick={(_: unknown, i: number) => setPinnedBar(i === pinnedBar ? null : i)}
+                                    shape={(p: BarShapeProps) => renderOverviewBar(p, activeBar)}
+                                    isAnimationActive={false}
+                                    className="cursor-pointer"
+                                />
+                            </BarChart>
+                        </ResponsiveContainer>
                     )}
-                </CardContent>
+                </div>
             </Card>
 
             {/* ── Secondary row: Plan donut · Daily orders · Top orgs ────────── */}

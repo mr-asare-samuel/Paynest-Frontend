@@ -10,6 +10,8 @@ import { createReport, getMyResports, downloadReport } from '@/(api-handlers)/re
 import { getOrganizationShops } from '@/(api-handlers)/organizationShopsHandler';
 import { OrganizationShopResponse } from '@/interfaces/organizationShops';
 import PageHeader from '@/components/(shared-components)/PageHeader';
+import Pagination from '@/components/(shared-components)/Pagination';
+import { usePagination } from '@/hooks/usePagination';
 import { useAuthStore } from '@/(zustand-store)/authStore';
 import { handleErrorMessage } from '@/utils/handleErrorMessage';
 import Link from 'next/link';
@@ -243,6 +245,8 @@ export default function ManagerReportView() {
 
     const closeCreate = () => { setIsCreateOpen(false); setForm(defaultForm); setFormErrors({}); };
 
+    const pg = usePagination(filteredReports, 10);
+
     return (
         <TooltipProvider>
             <div className="flex flex-col gap-6">
@@ -332,7 +336,7 @@ export default function ManagerReportView() {
                                             </p>
                                         </TableCell>
                                     </TableRow>
-                                ) : filteredReports.map(report => (
+                                ) : pg.pageItems.map(report => (
                                     <TableRow key={report.id}>
                                         <TableCell className="pl-6 font-medium">
                                             <div className="flex items-center gap-2">
@@ -382,6 +386,11 @@ export default function ManagerReportView() {
                             </TableBody>
                         </Table>
                     </div>
+                    {!loading && filteredReports.length > 0 && (
+                        <div className="border-border bg-muted/30 border-t px-4 py-3">
+                            <Pagination page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage} total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize} />
+                        </div>
+                    )}
                 </Card>
 
                 {/* Create Report Dialog */}
