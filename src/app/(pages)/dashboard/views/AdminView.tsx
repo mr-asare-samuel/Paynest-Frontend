@@ -5,7 +5,8 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import dayjs from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
+import { DatePicker } from 'antd';
 import {
     RefreshCcw, CalendarDays, TrendingUp, TrendingDown, ArrowUpRight,
     Package, AlertTriangle, ShoppingBag, Clock, Truck, CheckCircle2,
@@ -44,6 +45,7 @@ const PERIODS = [
     { value: '7', label: 'Last 7 days' },
     { value: '30', label: 'Last 30 days' },
     { value: '90', label: 'Last 90 days' },
+    { value: 'custom', label: 'Custom range' },
 ];
 
 const ORDER_STATUS: Record<OrderStatus, { label: string; icon: typeof Clock; cls: string }> = {
@@ -162,6 +164,7 @@ export const AdminView = () => {
     const currency = useOrgCurrency();
 
     const [period, setPeriod] = useState('30');
+    const [customRange, setCustomRange] = useState<[Dayjs, Dayjs] | null>(null);
     const [loading, setLoading] = useState(true);
     const [cur, setCur] = useState<FinanceOverviewResponse | null>(null);
     const [prev, setPrev] = useState<FinanceOverviewResponse | null>(null);
@@ -173,18 +176,30 @@ export const AdminView = () => {
     const [statusFilter, setStatusFilter] = useState<'all' | OrderStatus>('all');
     const [selected, setSelected] = useState<Set<number>>(new Set());
 
-    const days = Number(period);
+    // Effective window (start/end as YYYY-MM-DD strings so effects stay stable)
+    const { startStr, endStr, spanDays } = useMemo(() => {
+        const end = period === 'custom' && customRange ? customRange[1] : dayjs();
+        const start = period === 'custom' && customRange
+            ? customRange[0]
+            : dayjs().subtract(Number(period) || 30, 'day');
+        return {
+            startStr: start.format('YYYY-MM-DD'),
+            endStr: end.format('YYYY-MM-DD'),
+            spanDays: Math.max(1, end.diff(start, 'day')),
+        };
+    }, [period, customRange]);
 
-    const load = useCallback(async (d: number) => {
+    const load = useCallback(async (sStr: string, eStr: string) => {
         setLoading(true);
         try {
-            const iso = (x: dayjs.Dayjs) => x.format('YYYY-MM-DD');
-            const end = dayjs();
-            const start = end.subtract(d, 'day');
+            const start = dayjs(sStr);
+            const end = dayjs(eStr);
+            const span = Math.max(1, end.diff(start, 'day'));
             const prevEnd = start.subtract(1, 'day');
-            const prevStart = prevEnd.subtract(d, 'day');
+            const prevStart = prevEnd.subtract(span, 'day');
+            const iso = (x: Dayjs) => x.format('YYYY-MM-DD');
             const [c, p, i, o] = await Promise.all([
-                GetFinanceOverview(undefined, iso(start), iso(end)),
+                GetFinanceOverview(undefined, sStr, eStr),
                 GetFinanceOverview(undefined, iso(prevStart), iso(prevEnd)),
                 GetInventoryStatistics().catch(() => null),
                 GetWalkinOrdersList(undefined, 0, 50).catch(() => ({ items: [], total: 0 })),
@@ -200,7 +215,14 @@ export const AdminView = () => {
         }
     }, []);
 
-    useEffect(() => { load(days); }, [load, days]);
+    useEffect(() => { load(startStr, endStr); }, [load, startStr, endStr]);
+
+    const onPeriodChange = (v: string) => {
+        setPeriod(v);
+        if (v === 'custom' && !customRange) {
+            setCustomRange([dayjs().subtract(30, 'day'), dayjs()]);
+        }
+    };
 
     const fmtShort = useCallback((n: number) => {
         if (Math.abs(n) >= 1_000_000) return `${currency} ${(n / 1_000_000).toFixed(1)}M`;
@@ -245,7 +267,7 @@ export const AdminView = () => {
     }, [buckets]);
 
     const activeBar = hoverBar ?? pinnedBar ?? maxBucket;
-    const avgPerDay = s ? s.total_revenue / days : 0;
+    const avgPerDay = s ? s.total_revenue / spanDays : 0;
     const revenueDelta = deltaPct(s?.total_revenue ?? 0, ps?.total_revenue ?? 0);
 
     const filteredOrders = useMemo(
@@ -293,8 +315,8 @@ export const AdminView = () => {
                         Here&apos;s how your shops are performing — sales, orders and stock in one place.
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
-                    <Select value={period} onValueChange={setPeriod}>
+                <div className="flex flex-wrap items-center gap-2">
+                    <Select value={period} onValueChange={onPeriodChange}>
                         <SelectTrigger className="h-9 w-[168px]">
                             <CalendarDays className="text-muted-foreground mr-1 size-4" />
                             <SelectValue />
@@ -303,7 +325,17 @@ export const AdminView = () => {
                             {PERIODS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
                         </SelectContent>
                     </Select>
-                    <Button variant="outline" size="icon" className="size-9" onClick={() => load(days)} aria-label="Refresh">
+                    {period === 'custom' && (
+                        <DatePicker.RangePicker
+                            value={customRange}
+                            onChange={d => { if (d?.[0] && d?.[1]) setCustomRange([d[0], d[1]]); }}
+                            format="DD MMM YYYY"
+                            allowClear={false}
+                            disabledDate={d => !!d && d.isAfter(dayjs(), 'day')}
+                            className="h-9"
+                        />
+                    )}
+                    <Button variant="outline" size="icon" className="size-9" onClick={() => load(startStr, endStr)} aria-label="Refresh">
                         <RefreshCcw className={cn('size-4', loading && 'animate-spin')} />
                     </Button>
                 </div>
@@ -393,14 +425,26 @@ export const AdminView = () => {
                                 )}
                             </div>
                         </div>
-                        <Select value={period} onValueChange={setPeriod}>
-                            <SelectTrigger className="h-8 w-[140px] text-xs">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent align="end">
-                                {PERIODS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                            <Select value={period} onValueChange={onPeriodChange}>
+                                <SelectTrigger className="h-8 w-[140px] text-xs">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent align="end">
+                                    {PERIODS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                            {period === 'custom' && (
+                                <DatePicker.RangePicker
+                                    value={customRange}
+                                    onChange={d => { if (d?.[0] && d?.[1]) setCustomRange([d[0], d[1]]); }}
+                                    format="DD MMM"
+                                    allowClear={false}
+                                    disabledDate={d => !!d && d.isAfter(dayjs(), 'day')}
+                                    size="small"
+                                />
+                            )}
+                        </div>
                     </div>
 
                     <div className="mt-4 h-64" onMouseLeave={() => setHoverBar(null)}>
