@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
     Plus, Pencil, RefreshCcw, Power, MoreHorizontal, Blocks, Package, Building2, Trash2,
+    ArrowUp, ArrowDown,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -131,11 +132,42 @@ function CatalogTab({ modules, stats, loading, reload }: {
     const usage = new Map((stats?.modules ?? []).map((m) => [m.code, m]));
     const [open, setOpen] = useState(false);
     const [editing, setEditing] = useState<ModuleResponse | null>(null);
-    const blank = { code: "", name: "", description: "", group: "", is_core: false, sort_order: "100" };
-    const [f, setF] = useState(blank);
+    const [f, setF] = useState({ code: "", name: "", description: "", group: "", is_core: false, sort_order: "100" });
     const [busy, setBusy] = useState(false);
+    const [reordering, setReordering] = useState(false);
 
-    const openNew = () => { setEditing(null); setF(blank); setOpen(true); };
+    // Rows are already returned sorted by (sort_order, name).
+    const ordered = modules;
+    const nextSortOrder = ordered.length
+        ? Math.max(...ordered.map((m) => m.sort_order)) + 10
+        : 10;
+
+    const openNew = () => {
+        setEditing(null);
+        setF({ code: "", name: "", description: "", group: "", is_core: false, sort_order: String(nextSortOrder) });
+        setOpen(true);
+    };
+
+    const move = async (index: number, dir: "up" | "down") => {
+        const j = dir === "up" ? index - 1 : index + 1;
+        if (j < 0 || j >= ordered.length || reordering) return;
+        const a = ordered[index];
+        const b = ordered[j];
+        setReordering(true);
+        try {
+            if (a.sort_order === b.sort_order) {
+                await UpdateModule(a.id, { sort_order: dir === "up" ? b.sort_order - 1 : b.sort_order + 1 });
+            } else {
+                await UpdateModule(a.id, { sort_order: b.sort_order });
+                await UpdateModule(b.id, { sort_order: a.sort_order });
+            }
+            reload();
+        } catch (e) {
+            handleErrorMessage(e, "Couldn't reorder");
+        } finally {
+            setReordering(false);
+        }
+    };
     const openEdit = (m: ModuleResponse) => {
         setEditing(m);
         setF({
@@ -203,7 +235,7 @@ function CatalogTab({ modules, stats, loading, reload }: {
                                     ))}
                                 </TableRow>
                             ))
-                        ) : modules.map((m) => (
+                        ) : ordered.map((m, i) => (
                             <TableRow key={m.id}>
                                 <TableCell className="pl-6 font-mono text-xs">{m.code}</TableCell>
                                 <TableCell className="font-medium">
@@ -232,17 +264,27 @@ function CatalogTab({ modules, stats, loading, reload }: {
                                     </Badge>
                                 </TableCell>
                                 <TableCell className="pr-6 text-right">
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end">
-                                            <DropdownMenuItem onClick={() => openEdit(m)}><Pencil className="mr-2 size-4" /> Edit</DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => toggleActive(m)}>
-                                                <Power className="mr-2 size-4" /> {m.is_active ? "Deactivate" : "Activate"}
-                                            </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
+                                    <div className="flex items-center justify-end gap-0.5">
+                                        <Button variant="ghost" size="icon" className="size-7" aria-label="Move up"
+                                            disabled={i === 0 || reordering} onClick={() => move(i, "up")}>
+                                            <ArrowUp className="size-3.5" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="size-7" aria-label="Move down"
+                                            disabled={i === ordered.length - 1 || reordering} onClick={() => move(i, "down")}>
+                                            <ArrowDown className="size-3.5" />
+                                        </Button>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                                <DropdownMenuItem onClick={() => openEdit(m)}><Pencil className="mr-2 size-4" /> Edit</DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => toggleActive(m)}>
+                                                    <Power className="mr-2 size-4" /> {m.is_active ? "Deactivate" : "Activate"}
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
                                 </TableCell>
                             </TableRow>
                         ))}
@@ -263,6 +305,9 @@ function CatalogTab({ modules, stats, loading, reload }: {
                             <div className="space-y-1.5">
                                 <Label>Sort order</Label>
                                 <Input type="number" value={f.sort_order} onChange={(e) => setF({ ...f, sort_order: e.target.value })} />
+                                <p className="text-muted-foreground text-xs">
+                                    {editing ? "Lower shows first; use the ↑↓ arrows on the list to reorder." : "Prefilled to place it last — reorder later with the ↑↓ arrows."}
+                                </p>
                             </div>
                         </div>
                         <div className="space-y-1.5">
