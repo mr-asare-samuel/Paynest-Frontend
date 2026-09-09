@@ -9,6 +9,8 @@ import {
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import PageHeader from '@/components/(shared-components)/PageHeader';
+import Pagination from '@/components/(shared-components)/Pagination';
+import { usePagination } from '@/hooks/usePagination';
 import { StatusPill } from '@/components/(shared-components)/StatusPill';
 import { BulkImportDialog } from '@/components/(shared-components)/BulkImportDialog';
 import {
@@ -128,6 +130,7 @@ export default function InventoryPage() {
         (item.product_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.product_id.toString().includes(searchTerm)
     );
+    const pg = usePagination(filtered, 10);
 
     const activeFilterCount = Object.values(filter).filter(Boolean).length;
 
@@ -372,7 +375,7 @@ export default function InventoryPage() {
                                         <p className="text-muted-foreground text-sm">No inventory items found.</p>
                                     </TableCell>
                                 </TableRow>
-                            ) : filtered.map(item => (
+                            ) : pg.pageItems.map(item => (
                                 <TableRow key={item.id}>
                                     <TableCell className="pl-6">
                                         <p className="text-foreground font-semibold">{item.product_name ?? 'Unknown'}</p>
@@ -451,10 +454,8 @@ export default function InventoryPage() {
                 </div>
 
                 {!loading && filtered.length > 0 && (
-                    <div className="border-border bg-muted/30 border-t px-6 py-3 text-xs">
-                        <span className="text-muted-foreground">
-                            {filtered.length} item{filtered.length !== 1 ? 's' : ''}
-                        </span>
+                    <div className="border-border bg-muted/30 border-t px-4 py-3">
+                        <Pagination page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage} total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize} />
                     </div>
                 )}
             </Card>
