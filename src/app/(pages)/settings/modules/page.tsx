@@ -4,8 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
     Plus, Pencil, RefreshCcw, Power, MoreHorizontal, Blocks, Package, Building2, Trash2,
-    ArrowUp, ArrowDown,
+    GripVertical,
 } from "lucide-react";
+import {
+    DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+    SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -16,6 +23,10 @@ import {
 import {
     Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -34,7 +45,7 @@ import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/(zustand-store)/authStore";
 import { handleErrorMessage } from "@/utils/handleErrorMessage";
 import {
-    GetModules, CreateModule, UpdateModule, SetPlanModules,
+    GetModules, CreateModule, UpdateModule, ReorderModules, SetPlanModules,
     GetOrgModuleGrants, CreateOrgModuleGrant, DeleteOrgModuleGrant,
     GetEntitlementStats, GetExpiringSubscriptions, GrandfatherOrgs,
     type EntitlementStats, type ExpiringOrg,
@@ -126,54 +137,76 @@ export default function ModulesAdminPage() {
 
 // ── Catalog tab ────────────────────────────────────────────────────────────
 
+const CATALOG_GRID = "grid grid-cols-[24px_1.2fr_1.6fr_1fr_80px_100px_72px] items-center gap-3";
+
+function SortableModuleRow({ id, children }: {
+    id: number;
+    children: (drag: {
+        attributes: ReturnType<typeof useSortable>["attributes"];
+        listeners: ReturnType<typeof useSortable>["listeners"];
+    }) => React.ReactNode;
+}) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+    const style: React.CSSProperties = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.6 : 1,
+        zIndex: isDragging ? 10 : undefined,
+        position: "relative",
+        background: isDragging ? "var(--card)" : undefined,
+    };
+    return (
+        <div ref={setNodeRef} style={style} className={cn(CATALOG_GRID, "border-border border-b px-4 py-2.5 last:border-b-0")}>
+            {children({ attributes, listeners })}
+        </div>
+    );
+}
+
 function CatalogTab({ modules, stats, loading, reload }: {
     modules: ModuleResponse[]; stats: EntitlementStats | null; loading: boolean; reload: () => void;
 }) {
     const usage = new Map((stats?.modules ?? []).map((m) => [m.code, m]));
     const [open, setOpen] = useState(false);
     const [editing, setEditing] = useState<ModuleResponse | null>(null);
-    const [f, setF] = useState({ code: "", name: "", description: "", group: "", is_core: false, sort_order: "100" });
+    const [f, setF] = useState({ code: "", name: "", description: "", group: "", is_core: false });
     const [busy, setBusy] = useState(false);
-    const [reordering, setReordering] = useState(false);
 
-    // Rows are already returned sorted by (sort_order, name).
-    const ordered = modules;
-    const nextSortOrder = ordered.length
-        ? Math.max(...ordered.map((m) => m.sort_order)) + 10
-        : 10;
+    // Local working order; drag mutates this, "Save order" persists it.
+    const [rows, setRows] = useState<ModuleResponse[]>(modules);
+    const [savingOrder, setSavingOrder] = useState(false);
+    useEffect(() => { setRows(modules); }, [modules]);
+    const dirty = rows.map((r) => r.id).join(",") !== modules.map((r) => r.id).join(",");
+
+    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+    const onDragEnd = (e: DragEndEvent) => {
+        const { active, over } = e;
+        if (!over || active.id === over.id) return;
+        const from = rows.findIndex((r) => r.id === active.id);
+        const to = rows.findIndex((r) => r.id === over.id);
+        if (from === -1 || to === -1) return;
+        setRows(arrayMove(rows, from, to));
+    };
+    const saveOrder = async () => {
+        setSavingOrder(true);
+        try {
+            await ReorderModules(rows.map((r) => r.id));
+            toast.success("Order saved");
+            reload();
+        } catch (e) {
+            handleErrorMessage(e, "Couldn't save the new order");
+        } finally {
+            setSavingOrder(false);
+        }
+    };
 
     const openNew = () => {
         setEditing(null);
-        setF({ code: "", name: "", description: "", group: "", is_core: false, sort_order: String(nextSortOrder) });
+        setF({ code: "", name: "", description: "", group: "", is_core: false });
         setOpen(true);
-    };
-
-    const move = async (index: number, dir: "up" | "down") => {
-        const j = dir === "up" ? index - 1 : index + 1;
-        if (j < 0 || j >= ordered.length || reordering) return;
-        const a = ordered[index];
-        const b = ordered[j];
-        setReordering(true);
-        try {
-            if (a.sort_order === b.sort_order) {
-                await UpdateModule(a.id, { sort_order: dir === "up" ? b.sort_order - 1 : b.sort_order + 1 });
-            } else {
-                await UpdateModule(a.id, { sort_order: b.sort_order });
-                await UpdateModule(b.id, { sort_order: a.sort_order });
-            }
-            reload();
-        } catch (e) {
-            handleErrorMessage(e, "Couldn't reorder");
-        } finally {
-            setReordering(false);
-        }
     };
     const openEdit = (m: ModuleResponse) => {
         setEditing(m);
-        setF({
-            code: m.code, name: m.name, description: m.description ?? "", group: m.group ?? "",
-            is_core: m.is_core, sort_order: String(m.sort_order),
-        });
+        setF({ code: m.code, name: m.name, description: m.description ?? "", group: m.group ?? "", is_core: m.is_core });
         setOpen(true);
     };
 
@@ -183,11 +216,11 @@ function CatalogTab({ modules, stats, loading, reload }: {
         setBusy(true);
         try {
             const body = {
-                name: f.name.trim(), description: f.description || undefined, group: f.group || undefined,
-                is_core: f.is_core, sort_order: Number(f.sort_order) || 100,
+                name: f.name.trim(), description: f.description || undefined,
+                group: f.group || undefined, is_core: f.is_core,
             };
             if (editing) await UpdateModule(editing.id, body);
-            else await CreateModule({ ...body, code: f.code.trim().toLowerCase() });
+            else await CreateModule({ ...body, code: f.code.trim().toLowerCase() });  // no sort_order -> appended
             toast.success(editing ? "Module updated" : "Module created");
             setOpen(false);
             reload();
@@ -207,108 +240,101 @@ function CatalogTab({ modules, stats, loading, reload }: {
         }
     };
 
+    const usageLabel = (code: string) => {
+        const u = usage.get(code);
+        if (!u) return "—";
+        return `${u.entitled_orgs} org${u.entitled_orgs !== 1 ? "s" : ""} · ${u.plans_including} plan${u.plans_including !== 1 ? "s" : ""}`;
+    };
+
     return (
         <Card className="gap-0 overflow-hidden p-0">
             <div className="flex items-center justify-between border-b px-4 py-2.5">
-                <span className="text-muted-foreground text-xs">{modules.length} modules</span>
-                <Button size="sm" onClick={openNew}><Plus className="mr-1.5 size-4" /> New Module</Button>
+                <span className="text-muted-foreground text-xs">
+                    {modules.length} modules{dirty && " · unsaved order"}
+                </span>
+                <div className="flex items-center gap-2">
+                    {dirty && (
+                        <>
+                            <Button size="sm" variant="ghost" onClick={() => setRows(modules)} disabled={savingOrder}>Discard</Button>
+                            <Button size="sm" variant="outline" onClick={saveOrder} disabled={savingOrder}>
+                                {savingOrder ? "Saving…" : "Save order"}
+                            </Button>
+                        </>
+                    )}
+                    <Button size="sm" onClick={openNew}><Plus className="mr-1.5 size-4" /> New Module</Button>
+                </div>
             </div>
-            <div className="overflow-x-auto">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead className="pl-6">Code</TableHead>
-                            <TableHead>Name</TableHead>
-                            <TableHead>Group</TableHead>
-                            <TableHead>Type</TableHead>
-                            <TableHead className="text-right">Usage</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead className="w-[60px] pr-6 text-right">Actions</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {loading ? (
-                            Array.from({ length: 6 }).map((_, i) => (
-                                <TableRow key={i}>
-                                    {Array.from({ length: 7 }).map((_, j) => (
-                                        <TableCell key={j}><Skeleton className="h-5 w-full rounded" /></TableCell>
-                                    ))}
-                                </TableRow>
-                            ))
-                        ) : ordered.map((m, i) => (
-                            <TableRow key={m.id}>
-                                <TableCell className="pl-6 font-mono text-xs">{m.code}</TableCell>
-                                <TableCell className="font-medium">
-                                    {m.name}
-                                    {m.description && <p className="text-muted-foreground text-xs">{m.description}</p>}
-                                </TableCell>
-                                <TableCell className="text-muted-foreground">{m.group || "—"}</TableCell>
-                                <TableCell>
-                                    <Badge variant="outline" className={cn("rounded-full text-xs",
-                                        m.is_core ? "border-info/30 bg-info/10 text-info" : "border-border")}>
-                                        {m.is_core ? "core" : "gated"}
-                                    </Badge>
-                                </TableCell>
-                                <TableCell className="text-muted-foreground text-right text-xs">
-                                    {usage.has(m.code) ? (
-                                        <span title="entitled orgs · plans including">
-                                            {usage.get(m.code)!.entitled_orgs} org{usage.get(m.code)!.entitled_orgs !== 1 ? "s" : ""}
-                                            {" · "}{usage.get(m.code)!.plans_including} plan{usage.get(m.code)!.plans_including !== 1 ? "s" : ""}
+
+            <div className={cn(CATALOG_GRID, "text-muted-foreground border-b px-4 py-2 text-xs font-medium")}>
+                <span />
+                <span>Code</span><span>Name</span><span>Group</span>
+                <span className="text-right">Usage</span><span>Status</span><span className="text-right">Actions</span>
+            </div>
+
+            {loading ? (
+                <div className="space-y-2 p-4">
+                    {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
+                </div>
+            ) : (
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                    <SortableContext items={rows.map((r) => r.id)} strategy={verticalListSortingStrategy}>
+                        {rows.map((m) => (
+                            <SortableModuleRow key={m.id} id={m.id}>
+                                {({ attributes, listeners }) => (
+                                    <>
+                                        <button type="button" {...attributes} {...listeners}
+                                            className="text-muted-foreground hover:text-foreground flex cursor-grab items-center justify-center active:cursor-grabbing"
+                                            aria-label="Drag to reorder">
+                                            <GripVertical className="size-4" />
+                                        </button>
+                                        <span className="truncate font-mono text-xs">{m.code}</span>
+                                        <div className="min-w-0">
+                                            <p className="text-foreground truncate text-sm font-medium">{m.name}</p>
+                                            {m.description && <p className="text-muted-foreground truncate text-xs">{m.description}</p>}
+                                        </div>
+                                        <span className="text-muted-foreground truncate text-sm">{m.group || "—"}</span>
+                                        <span className="text-muted-foreground text-right text-xs" title="entitled orgs · plans including">
+                                            {usageLabel(m.code)}
                                         </span>
-                                    ) : "—"}
-                                </TableCell>
-                                <TableCell>
-                                    <Badge variant="outline" className={cn("rounded-full text-xs",
-                                        m.is_active ? "border-success/30 bg-success/10 text-success" : "border-border bg-muted text-muted-foreground")}>
-                                        {m.is_active ? "active" : "inactive"}
-                                    </Badge>
-                                </TableCell>
-                                <TableCell className="pr-6 text-right">
-                                    <div className="flex items-center justify-end gap-0.5">
-                                        <Button variant="ghost" size="icon" className="size-7" aria-label="Move up"
-                                            disabled={i === 0 || reordering} onClick={() => move(i, "up")}>
-                                            <ArrowUp className="size-3.5" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon" className="size-7" aria-label="Move down"
-                                            disabled={i === ordered.length - 1 || reordering} onClick={() => move(i, "down")}>
-                                            <ArrowDown className="size-3.5" />
-                                        </Button>
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end">
-                                                <DropdownMenuItem onClick={() => openEdit(m)}><Pencil className="mr-2 size-4" /> Edit</DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => toggleActive(m)}>
-                                                    <Power className="mr-2 size-4" /> {m.is_active ? "Deactivate" : "Activate"}
-                                                </DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    </div>
-                                </TableCell>
-                            </TableRow>
+                                        <div className="flex items-center gap-1.5">
+                                            <Badge variant="outline" className={cn("rounded-full text-[10px]",
+                                                m.is_core ? "border-info/30 bg-info/10 text-info" : "border-border")}>
+                                                {m.is_core ? "core" : "gated"}
+                                            </Badge>
+                                            {!m.is_active && (
+                                                <Badge variant="outline" className="border-border bg-muted text-muted-foreground rounded-full text-[10px]">off</Badge>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center justify-end">
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuItem onClick={() => openEdit(m)}><Pencil className="mr-2 size-4" /> Edit</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => toggleActive(m)}>
+                                                        <Power className="mr-2 size-4" /> {m.is_active ? "Deactivate" : "Activate"}
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </div>
+                                    </>
+                                )}
+                            </SortableModuleRow>
                         ))}
-                    </TableBody>
-                </Table>
-            </div>
+                    </SortableContext>
+                </DndContext>
+            )}
 
             <Dialog open={open} onOpenChange={(o) => !o && setOpen(false)}>
                 <DialogContent className="max-w-md">
                     <DialogHeader><DialogTitle>{editing ? "Edit Module" : "New Module"}</DialogTitle></DialogHeader>
                     <div className="space-y-4 pt-2">
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5">
-                                <Label>Code</Label>
-                                <Input value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })}
-                                    disabled={!!editing} className="font-mono" placeholder="loyalty" />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label>Sort order</Label>
-                                <Input type="number" value={f.sort_order} onChange={(e) => setF({ ...f, sort_order: e.target.value })} />
-                                <p className="text-muted-foreground text-xs">
-                                    {editing ? "Lower shows first; use the ↑↓ arrows on the list to reorder." : "Prefilled to place it last — reorder later with the ↑↓ arrows."}
-                                </p>
-                            </div>
+                        <div className="space-y-1.5">
+                            <Label>Code</Label>
+                            <Input value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })}
+                                disabled={!!editing} className="font-mono" placeholder="loyalty" />
+                            {!editing && <p className="text-muted-foreground text-xs">New modules are added at the bottom — drag to reposition.</p>}
                         </div>
                         <div className="space-y-1.5">
                             <Label>Name</Label>
@@ -435,9 +461,10 @@ function OrgsTab({ modules, plans, orgs, expiring, loading, reloadOrgs }: {
     const gated = useMemo(() => modules.filter((m) => !m.is_core && m.is_active), [modules]);
     const [orgId, setOrgId] = useState<string>("");
     const [grandfathering, setGrandfathering] = useState(false);
+    const [confirmGrandfather, setConfirmGrandfather] = useState(false);
 
     const runGrandfather = async () => {
-        if (!confirm("Grant every gated module to all active organisations that don't already have it?\n\nUse this once before turning on enforcement so nobody loses access.")) return;
+        setConfirmGrandfather(false);
         setGrandfathering(true);
         try {
             const r = await GrandfatherOrgs({ strategy: "grant_all" });
@@ -526,10 +553,28 @@ function OrgsTab({ modules, plans, orgs, expiring, loading, reloadOrgs }: {
                         Grandfather every active org before flipping <code className="font-mono">MODULE_ENFORCEMENT_ENABLED</code>.
                     </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={runGrandfather} disabled={grandfathering}>
+                <Button variant="outline" size="sm" onClick={() => setConfirmGrandfather(true)} disabled={grandfathering}>
                     {grandfathering ? "Working…" : "Grandfather all active orgs"}
                 </Button>
             </Card>
+
+            <AlertDialog open={confirmGrandfather} onOpenChange={setConfirmGrandfather}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Grandfather every active organisation?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Adds a permanent <b>grant</b> for every gated module each active org isn&apos;t already
+                            entitled to, so turning on enforcement doesn&apos;t remove anyone&apos;s access.
+                            Run this once, just before flipping <code className="font-mono">MODULE_ENFORCEMENT_ENABLED</code>.
+                            Existing grants are left untouched.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={runGrandfather}>Grandfather all orgs</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             {expiring.length > 0 && (
                 <Card className="border-warning/30 bg-warning/5 p-4">
