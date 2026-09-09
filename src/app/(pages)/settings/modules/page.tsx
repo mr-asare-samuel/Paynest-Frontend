@@ -56,6 +56,14 @@ import { ModuleResponse, ModuleGrantResponse } from "@/interfaces/entitlements";
 import { SubscriptionPlanResponse } from "@/interfaces/subscriptionPlan";
 import { OrganizationResponse } from "@/interfaces/organization";
 
+// Sidebar section labels a module's pages can live under (mirrors AppShell NAV_GROUPS).
+const NAV_SECTIONS = [
+    "Overview", "Operate", "Catalog", "Pricing & Discounts", "Procurement",
+    "Customers", "Reports & Finance", "Payroll", "My Pay", "Leave & HR",
+    "Scheduling", "Administration", "Account",
+];
+const NONE = "__none__";
+
 export default function ModulesAdminPage() {
     const { user } = useAuthStore();
     const router = useRouter();
@@ -334,23 +342,46 @@ function CatalogTab({ modules, stats, loading, reload }: {
                             <Label>Code</Label>
                             <Input value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })}
                                 disabled={!!editing} className="font-mono" placeholder="loyalty" />
-                            {!editing && <p className="text-muted-foreground text-xs">New modules are added at the bottom — drag to reposition.</p>}
+                            <p className="text-muted-foreground text-xs">
+                                {editing
+                                    ? "The identifier used in code (require_module, nav tags) — can't be changed."
+                                    : "Lowercase identifier wired into code later. Can't be changed after creation. New modules are added at the bottom — drag to reposition."}
+                            </p>
                         </div>
                         <div className="space-y-1.5">
                             <Label>Name</Label>
-                            <Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+                            <Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Loyalty & Rewards" />
+                            <p className="text-muted-foreground text-xs">Shown to users — in menus, plan checkboxes, and the “not in your plan” screen.</p>
                         </div>
                         <div className="space-y-1.5">
                             <Label>Group</Label>
-                            <Input value={f.group} onChange={(e) => setF({ ...f, group: e.target.value })} placeholder="Nav section label" />
+                            <Select
+                                value={f.group || NONE}
+                                onValueChange={(v) => setF({ ...f, group: v === NONE ? "" : v })}
+                            >
+                                <SelectTrigger><SelectValue placeholder="Pick a section" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={NONE}>— None —</SelectItem>
+                                    {NAV_SECTIONS.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+                                    {f.group && !NAV_SECTIONS.includes(f.group) && (
+                                        <SelectItem value={f.group}>{f.group} (custom)</SelectItem>
+                                    )}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-muted-foreground text-xs">Which sidebar section this module’s pages sit in. Informational — keeps the catalog organised.</p>
                         </div>
                         <div className="space-y-1.5">
                             <Label>Description</Label>
-                            <Input value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} />
+                            <Input value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })}
+                                placeholder="What this module unlocks" />
+                            <p className="text-muted-foreground text-xs">Optional note describing what the module covers.</p>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Switch checked={f.is_core} onCheckedChange={(v) => setF({ ...f, is_core: v })} id="core" />
-                            <Label htmlFor="core">Core (always available to every org)</Label>
+                        <div className="space-y-1.5">
+                            <div className="flex items-center gap-2">
+                                <Switch checked={f.is_core} onCheckedChange={(v) => setF({ ...f, is_core: v })} id="core" />
+                                <Label htmlFor="core">Core (always available to every org)</Label>
+                            </div>
+                            <p className="text-muted-foreground text-xs">Core modules can’t be gated — they’re hidden from the Plans and per-org override screens.</p>
                         </div>
                     </div>
                     <DialogFooter>
