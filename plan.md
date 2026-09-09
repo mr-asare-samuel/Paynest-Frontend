@@ -371,6 +371,14 @@ paynest-frontend-app/
 - [x] Report preview (inline table + stats)
 - [x] Report download (blob -> file)
 
+### Advanced Analytics (2026-09-09, backend plan §3.3 — `/analytics/*`, behind the `reports_advanced` ModuleGuard, admin + manager)
+- [x] Report Builder page (`/analytics/report-builder`) — dataset picker (driven by `GET /analytics/datasets`), Detail vs Grouped mode, column / group-by / aggregation-row / `field·op·value` filter / sort builders, save·edit·delete definitions, run with date-range + shop filter into a results table + summary chips, export to PDF/Excel/CSV/JSON (generates + downloads the report file)
+- [x] Consolidated multi-shop report (`/analytics/consolidated`) — date range → per-shop table (orders, revenue, COGS, gross/net profit, expenses, AOV, inventory value, out/low stock) + ORG TOTAL row + summary strip + CSV export
+- [x] Forecasting (`/analytics/forecast`) — sales forecast composed chart (history line + dashed forecast line + confidence band + "today" seam marker) with metric/lookback/horizon/shop controls and recent-vs-projected delta; days-to-stockout table with at-risk badge, sales rate, projected date, suggested reorder qty
+- [x] Report Schedules (`/analytics/schedules`) — cron schedule CRUD (preset cadences or raw 5-field cron), standard report type or saved custom report, format, window days, recipient multiselect, auto-approve toggle, run-now, pause/activate, next/last-run columns
+- [x] KPI Alerts (`/analytics/alerts`) — rule CRUD (11 metrics × comparison × threshold × window, per-shop scope, in-app/email channels, cooldown), test-now toast (observed vs threshold), per-rule event history
+- [x] `src/interfaces/analytics.ts` + `src/(api-handlers)/analyticsHandler.ts`; "Advanced Analytics" nav group under Reports & Finance; `analytics/layout.tsx` guard
+
 ### Daily Closure
 - [x] Daily closure workflow (role-specific views: Admin/Attendant)
 - [x] Closure detail page
@@ -500,12 +508,13 @@ paynest-frontend-app/
 - [ ] Payment confirmation screen
 - [ ] Transaction history with gateway details
 
-#### 3.2 Advanced Reporting
-- [ ] Custom report builder page
-- [ ] Report scheduling UI (daily/weekly/monthly)
-- [ ] Interactive charts dashboard (drill-down)
-- [ ] KPI alert configuration
-- [ ] Export to PDF/Excel from any data table
+#### 3.2 Advanced Reporting — done 2026-09-09 (see "Advanced Analytics" under Features Completed)
+- [x] Custom report builder page — `/analytics/report-builder`
+- [x] Report scheduling UI (cron: presets + raw) — `/analytics/schedules`
+- [x] KPI alert configuration — `/analytics/alerts`
+- [x] Export to PDF/Excel/CSV/JSON from the report builder results
+- [x] Consolidated multi-shop report + sales/stockout forecasting charts — `/analytics/consolidated`, `/analytics/forecast`
+- [ ] Interactive charts dashboard (drill-down) — not built (forecast + dashboards cover the common cases)
 
 #### 3.3 Communication Center
 - [ ] In-app messaging (admin -> staff)
@@ -595,7 +604,7 @@ paynest-frontend-app/
 4. **Product Create/Edit Pages** - Currently only list view exists
 5. **Payment Gateway Integration** - Replace manual payment entry
 6. **Dashboard per Role** - Manager + Attendant need their own views
-7. **Advanced Reporting** - Interactive charts, scheduling
+7. ~~Advanced Reporting~~ - done 2026-09-09 (report builder, consolidated, forecasting, schedules, KPI alerts under `/analytics/*`)
 8. **Expense Tracking** - Complete financial picture
 9. **React Query Migration** - Replace manual fetch patterns for better UX
 10. **E2E Testing** - Production confidence
