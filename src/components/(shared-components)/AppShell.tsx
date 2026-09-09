@@ -216,6 +216,19 @@ const NAV_GROUPS: NavGroup[] = [
                 ],
             },
             {
+                name: "Advanced Analytics",
+                icon: TrendingUp,
+                roles: ["admin", "manager"],
+                module: "reports_advanced",
+                subItems: [
+                    { name: "Report Builder", href: "/analytics/report-builder", icon: Wrench, roles: ["admin", "manager"] },
+                    { name: "Consolidated", href: "/analytics/consolidated", icon: Building2, roles: ["admin", "manager"] },
+                    { name: "Forecasting", href: "/analytics/forecast", icon: TrendingUp, roles: ["admin", "manager"] },
+                    { name: "Report Schedules", href: "/analytics/schedules", icon: CalendarClock, roles: ["admin", "manager"] },
+                    { name: "KPI Alerts", href: "/analytics/alerts", icon: Bell, roles: ["admin", "manager"] },
+                ],
+            },
+            {
                 name: "Financials",
                 icon: CircleDollarSign,
                 roles: ["admin"],
