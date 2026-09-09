@@ -32,6 +32,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import PageHeader from "@/components/(shared-components)/PageHeader";
+import Pagination from "@/components/(shared-components)/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/(zustand-store)/authStore";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -221,6 +223,7 @@ export default function BundlesPage() {
 
     const shopName = (id: number) => shops.find((s) => s.id === id)?.name ?? `Shop #${id}`;
     const filtered = rows.filter((b) => b.name.toLowerCase().includes(search.toLowerCase()));
+    const pg = usePagination(filtered, 10);
 
     if (!user || !isAllowed) {
         return (
@@ -284,7 +287,7 @@ export default function BundlesPage() {
                                         <p className="text-muted-foreground mt-1 text-sm">Combine products into a single fixed-price offer.</p>
                                     </TableCell>
                                 </TableRow>
-                            ) : filtered.map((b) => (
+                            ) : pg.pageItems.map((b) => (
                                 <TableRow key={b.id}>
                                     <TableCell className="pl-6 font-semibold">
                                         {b.name}
@@ -329,6 +332,11 @@ export default function BundlesPage() {
                         </TableBody>
                     </Table>
                 </div>
+                {!loading && filtered.length > 0 && (
+                    <div className="border-border bg-muted/30 border-t px-4 py-3">
+                        <Pagination page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage} total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize} />
+                    </div>
+                )}
             </Card>
 
             <Dialog open={dialogOpen} onOpenChange={(o) => !o && setDialogOpen(false)}>
