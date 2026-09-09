@@ -15,6 +15,7 @@ import { DailyClosureResponse } from '@/interfaces/dailyClosure';
 import { OrganizationShopResponse } from '@/interfaces/organizationShops';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -177,9 +178,30 @@ export default function DailyClosurePage() {
 
     if (isLoading) {
         return (
-            <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
-                <RefreshCcw className="text-primary size-10 animate-spin" />
-                <p className="text-muted-foreground font-medium">Loading daily closure data…</p>
+            <div className="flex flex-col gap-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="space-y-2">
+                        <Skeleton className="h-7 w-44" />
+                        <Skeleton className="h-4 w-72" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Skeleton className="h-9 w-[220px]" />
+                        <Skeleton className="size-9" />
+                    </div>
+                </div>
+
+                <Skeleton className="h-[72px] w-full rounded-xl" />
+
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                    <div className="space-y-6 lg:col-span-2">
+                        <Skeleton className="h-24 w-full rounded-xl" />
+                        <Skeleton className="h-72 w-full rounded-xl" />
+                    </div>
+                    <div className="space-y-6">
+                        <Skeleton className="h-56 w-full rounded-xl" />
+                        <Skeleton className="h-32 w-full rounded-xl" />
+                    </div>
+                </div>
             </div>
         );
     }
