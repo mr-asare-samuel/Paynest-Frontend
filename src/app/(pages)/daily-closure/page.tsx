@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
     Banknote, RefreshCcw, AlertCircle, CheckCircle,
-    Calendar, Clock, Building2, Wallet, FileText, Save,
+    Calendar, Clock, Building2, Wallet, Save,
 } from 'lucide-react';
 import { useAuthStore } from '@/(zustand-store)/authStore';
 import {
@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import {
-    Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+    Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -217,26 +217,46 @@ export default function DailyClosurePage() {
 
             {/* Active closure banner */}
             {closure && activeCfg && (
-                <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
+                <Card className="flex flex-wrap items-center justify-between gap-4 p-4">
                     <div className="flex items-center gap-3">
                         <div className="bg-primary/10 flex size-10 shrink-0 items-center justify-center rounded-xl">
                             <Wallet className="text-primary size-5" />
                         </div>
                         <div>
                             <p className="text-foreground font-semibold leading-tight">{closure.closure_number}</p>
-                            <p className="text-muted-foreground flex items-center gap-1 text-xs">
-                                <Calendar className="size-3" />
-                                {safeFormat(closure.closure_date, 'MMM d, yyyy')}
+                            <p className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+                                <span className="flex items-center gap-1">
+                                    <Calendar className="size-3" />
+                                    {safeFormat(closure.closure_date, 'MMM d, yyyy')}
+                                </span>
+                                {shops.find(s => s.id === activeShopId)?.name && (
+                                    <span className="flex items-center gap-1">
+                                        <Building2 className="size-3" />
+                                        {shops.find(s => s.id === activeShopId)?.name}
+                                    </span>
+                                )}
+                                {closure.opened_at && (
+                                    <span className="flex items-center gap-1">
+                                        <Clock className="size-3" />
+                                        Opened {safeFormat(closure.opened_at, 'p')}
+                                    </span>
+                                )}
                             </p>
                         </div>
                     </div>
-                    <Badge
-                        variant="outline"
-                        className={cn('flex items-center gap-1.5 rounded-full px-3 py-1', activeCfg.badgeClass)}
-                    >
-                        <activeCfg.Icon className="size-3" />
-                        {activeCfg.label}
-                    </Badge>
+                    <div className="flex items-center gap-4">
+                        <div className="text-right">
+                            <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">Expected cash</p>
+                            <p className="text-foreground num-tabular text-sm font-bold">{orgCurrency} {(closure.expected_cash ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                        </div>
+                        <Badge
+                            variant="outline"
+                            className={cn('flex items-center gap-1.5 rounded-full px-3 py-1', activeCfg.badgeClass)}
+                        >
+                            <activeCfg.Icon className="size-3" />
+                            {activeCfg.label}
+                        </Badge>
+                    </div>
                 </Card>
             )}
 

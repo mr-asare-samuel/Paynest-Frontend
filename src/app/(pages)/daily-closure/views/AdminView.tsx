@@ -1,15 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
     Banknote, Calculator, Calendar, FileText,
     RefreshCcw, ClipboardCheck, Receipt, CheckCircle2,
-    AlertCircle, Eye, CheckCircle, XCircle, Users,
+    AlertCircle, Eye, XCircle, Users, MoreHorizontal, ScrollText, X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { DailyClosureResponse } from "@/interfaces/dailyClosure";
 import { GetAllClosures } from "@/(api-handlers)/dailyClosureHandler";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,12 +18,19 @@ import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+    DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+    DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { safeFormat } from "@/lib/safeFormat";
 import { DatePicker } from 'antd';
-import dayjs from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
 import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/useCurrency";
 import Pagination from "@/components/(shared-components)/Pagination";
@@ -73,13 +79,28 @@ export default function AdminView({
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    const [statusHistFilter, setStatusHistFilter] = useState('all');
     const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
-    const pg = usePagination(history, 10);
+
+    const filteredHistory = useMemo(() => (
+        statusHistFilter === 'all'
+            ? history
+            : history.filter(h => (h.status || '').toLowerCase() === statusHistFilter)
+    ), [history, statusHistFilter]);
+
+    const historySummary = useMemo(() => ({
+        count: filteredHistory.length,
+        netSales: filteredHistory.reduce((a, h) => a + (h.net_sales ?? 0), 0),
+        verified: filteredHistory.filter(h => (h.status || '').toLowerCase() === 'verified').length,
+        attention: filteredHistory.filter(h => ['submitted', 'rejected', 'discrepancy'].includes((h.status || '').toLowerCase())).length,
+    }), [filteredHistory]);
+
+    const pg = usePagination(filteredHistory, 10);
 
     useEffect(() => {
         if (activeShopId) fetchHistory();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeShopId]);
+    }, [activeShopId, startDate, endDate]);
 
     const fetchHistory = async () => {
         setLoadingHistory(true);
@@ -342,33 +363,72 @@ export default function AdminView({
     };
 
     /* ---- History Tab ---- */
+    const rangeValue: [Dayjs | null, Dayjs | null] = [
+        startDate ? dayjs(startDate) : null,
+        endDate ? dayjs(endDate) : null,
+    ];
+    const hasFilters = !!startDate || !!endDate || statusHistFilter !== 'all';
+    const clearHistoryFilters = () => {
+        setStartDate('');
+        setEndDate('');
+        setStatusHistFilter('all');
+    };
+
     const renderHistory = () => (
         <div className="mt-6 space-y-4">
-            {/* Date filter */}
-            <div className="flex flex-wrap items-end gap-3">
-                <div className="space-y-1.5">
-                    <Label className="text-xs">From</Label>
-                    <DatePicker
-                        value={startDate ? dayjs(startDate) : null}
-                        onChange={(date) => setStartDate(date ? date.format('YYYY-MM-DD') : '')}
-                        format="DD MMM YYYY"
-                        className="h-9 w-40"
-                    />
-                </div>
-                <div className="space-y-1.5">
-                    <Label className="text-xs">To</Label>
-                    <DatePicker
-                        value={endDate ? dayjs(endDate) : null}
-                        onChange={(date) => setEndDate(date ? date.format('YYYY-MM-DD') : '')}
-                        format="DD MMM YYYY"
-                        className="h-9 w-40"
-                    />
-                </div>
-                <Button variant="outline" size="sm" onClick={fetchHistory} disabled={loadingHistory}>
-                    <RefreshCcw className={cn("mr-2 size-4", loadingHistory && "animate-spin")} />
-                    Filter
+            {/* Filters */}
+            <div className="flex flex-wrap items-center gap-2">
+                <DatePicker.RangePicker
+                    value={rangeValue}
+                    onChange={dates => {
+                        setStartDate(dates?.[0] ? dates[0].format('YYYY-MM-DD') : '');
+                        setEndDate(dates?.[1] ? dates[1].format('YYYY-MM-DD') : '');
+                    }}
+                    format="DD MMM YYYY"
+                    disabledDate={d => !!d && d.isAfter(dayjs(), 'day')}
+                    className="h-9"
+                />
+                <Select value={statusHistFilter} onValueChange={setStatusHistFilter}>
+                    <SelectTrigger className="h-9 w-[160px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Any status</SelectItem>
+                        <SelectItem value="opened">Opened</SelectItem>
+                        <SelectItem value="submitted">Submitted</SelectItem>
+                        <SelectItem value="verified">Verified</SelectItem>
+                        <SelectItem value="rejected">Rejected</SelectItem>
+                    </SelectContent>
+                </Select>
+                <Button variant="outline" size="icon" className="size-9" onClick={fetchHistory} disabled={loadingHistory} aria-label="Refresh history">
+                    <RefreshCcw className={cn("size-4", loadingHistory && "animate-spin")} />
                 </Button>
+                {hasFilters && (
+                    <Button variant="ghost" size="sm" className="h-9 gap-1.5 text-xs" onClick={clearHistoryFilters}>
+                        <X className="size-3.5" /> Clear
+                    </Button>
+                )}
             </div>
+
+            {/* Summary strip */}
+            <Card className="overflow-hidden p-0">
+                <div className="divide-border grid grid-cols-2 divide-x divide-y sm:grid-cols-4 sm:divide-y-0">
+                    {([
+                        { label: 'Closures', value: String(historySummary.count), icon: ScrollText, cls: 'bg-primary/10 text-primary' },
+                        { label: 'Net sales', value: fmt(historySummary.netSales), icon: Banknote, cls: 'bg-success/10 text-success' },
+                        { label: 'Verified', value: String(historySummary.verified), icon: CheckCircle2, cls: 'bg-info/10 text-info' },
+                        { label: 'Needs attention', value: String(historySummary.attention), icon: AlertCircle, cls: 'bg-warning/10 text-warning-foreground' },
+                    ] as { label: string; value: string; icon: LucideIcon; cls: string }[]).map(({ label, value, icon: Icon, cls }) => (
+                        <div key={label} className="flex items-center gap-3 px-5 py-4">
+                            <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-xl", cls)}>
+                                <Icon className="size-4" />
+                            </div>
+                            <div className="min-w-0">
+                                <p className="text-muted-foreground truncate text-xs font-medium">{label}</p>
+                                <p className="text-foreground truncate text-lg font-bold leading-tight num-tabular">{value}</p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </Card>
 
             <Card className="gap-0 overflow-hidden p-0">
                 <div className="overflow-x-auto">
@@ -378,10 +438,10 @@ export default function AdminView({
                                 <TableHead className="pl-6">Date</TableHead>
                                 <TableHead>Ref No.</TableHead>
                                 <TableHead>Status</TableHead>
-                                <TableHead>Net Sales</TableHead>
-                                <TableHead>Tax</TableHead>
-                                <TableHead>Cash Diff</TableHead>
-                                <TableHead className="pr-6 w-[100px] text-right">Actions</TableHead>
+                                <TableHead className="text-right">Orders</TableHead>
+                                <TableHead className="text-right">Net Sales</TableHead>
+                                <TableHead className="text-right">Cash Diff</TableHead>
+                                <TableHead className="pr-6 w-[70px] text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -393,69 +453,81 @@ export default function AdminView({
                                         ))}
                                     </TableRow>
                                 ))
-                            ) : history.length === 0 ? (
+                            ) : filteredHistory.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={7} className="py-16 text-center">
                                         <div className="bg-muted mx-auto mb-4 flex size-14 items-center justify-center rounded-full">
                                             <FileText className="text-muted-foreground size-7" />
                                         </div>
-                                        <p className="text-foreground font-semibold">No history found</p>
-                                        <p className="text-muted-foreground mt-1 text-sm">Try adjusting the date range filter.</p>
+                                        <p className="text-foreground font-semibold">No closures found</p>
+                                        <p className="text-muted-foreground mt-1 text-sm">
+                                            {hasFilters ? 'Try adjusting the date range or status filter.' : 'No closures recorded for this shop yet.'}
+                                        </p>
                                     </TableCell>
                                 </TableRow>
-                            ) : pg.pageItems.map(rec => (
-                                <TableRow key={rec.id}>
-                                    <TableCell className="pl-6 text-sm">{safeFormat(rec.closure_date, 'MMM d, yyyy')}</TableCell>
-                                    <TableCell className="text-muted-foreground text-sm font-mono">{rec.closure_number}</TableCell>
-                                    <TableCell><StatusBadge status={rec.status} /></TableCell>
-                                    <TableCell className="text-sm">{fmt(rec.net_sales)}</TableCell>
-                                    <TableCell className="text-muted-foreground text-sm">{fmt(rec.total_tax)}</TableCell>
-                                    <TableCell>
-                                        <span className={cn(
-                                            "text-sm font-medium",
-                                            (rec.cash_difference ?? 0) < 0 ? "text-destructive" : (rec.cash_difference ?? 0) > 0 ? "text-success" : "text-muted-foreground"
-                                        )}>
-                                            {(rec.cash_difference ?? 0) > 0 ? '+' : ''}{(rec.cash_difference ?? 0).toFixed(2)}
-                                        </span>
-                                    </TableCell>
-                                    <TableCell className="pr-6 text-right">
-                                        <div className="flex items-center justify-end gap-1">
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="size-8"
-                                                onClick={() => router.push(`/daily-closure/${rec.id}`)}
-                                            >
-                                                <Eye className="size-4" />
-                                            </Button>
-                                            {rec.status === 'submitted' && (
-                                                <>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="size-8 text-success hover:text-success hover:bg-success/10"
-                                                        onClick={() => setPendingAction({ type: 'approve', closureId: rec.id, label: `Approve closure #${rec.closure_number}?` })}
-                                                    >
-                                                        <CheckCircle className="size-4" />
+                            ) : pg.pageItems.map(rec => {
+                                const diff = rec.cash_difference ?? 0;
+                                return (
+                                    <TableRow
+                                        key={rec.id}
+                                        className="hover:bg-muted/40 cursor-pointer"
+                                        onClick={() => router.push(`/daily-closure/${rec.id}`)}
+                                    >
+                                        <TableCell className="pl-6 text-sm">{safeFormat(rec.closure_date, 'MMM d, yyyy')}</TableCell>
+                                        <TableCell className="text-muted-foreground font-mono text-sm">{rec.closure_number}</TableCell>
+                                        <TableCell><StatusBadge status={rec.status} /></TableCell>
+                                        <TableCell className="num-tabular text-right text-sm">{rec.total_orders ?? 0}</TableCell>
+                                        <TableCell className="num-tabular text-right text-sm font-medium">
+                                            {fmt(rec.net_sales)}
+                                            <span className="text-muted-foreground block text-[10px] font-normal">Tax {fmt(rec.total_tax ?? 0)}</span>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <span className={cn(
+                                                "num-tabular text-sm font-semibold",
+                                                diff < 0 ? "text-destructive" : diff > 0 ? "text-success" : "text-muted-foreground",
+                                            )}>
+                                                {diff > 0 ? '+' : ''}{fmt(diff)}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="pr-6 text-right" onClick={e => e.stopPropagation()}>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="size-8" aria-label={`Actions for closure ${rec.closure_number}`}>
+                                                        <MoreHorizontal className="size-4" />
                                                     </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                        onClick={() => setPendingAction({ type: 'reject', closureId: rec.id, label: `Reject closure #${rec.closure_number}?` })}
-                                                    >
-                                                        <XCircle className="size-4" />
-                                                    </Button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="w-48">
+                                                    <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">
+                                                        #{rec.closure_number}
+                                                    </DropdownMenuLabel>
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem onClick={() => router.push(`/daily-closure/${rec.id}`)}>
+                                                        <Eye className="size-4" /> View details
+                                                    </DropdownMenuItem>
+                                                    {rec.status === 'submitted' && (
+                                                        <>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem onClick={() => setPendingAction({ type: 'approve', closureId: rec.id, label: `Approve closure #${rec.closure_number}?` })}>
+                                                                <CheckCircle2 className="size-4" /> Approve &amp; verify
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                                variant="destructive"
+                                                                onClick={() => setPendingAction({ type: 'reject', closureId: rec.id, label: `Reject closure #${rec.closure_number}?` })}
+                                                            >
+                                                                <XCircle className="size-4" /> Reject submission
+                                                            </DropdownMenuItem>
+                                                        </>
+                                                    )}
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })}
                         </TableBody>
                     </Table>
                 </div>
-                {!loadingHistory && history.length > 0 && (
+                {!loadingHistory && filteredHistory.length > 0 && (
                     <div className="border-border bg-muted/30 border-t px-4 py-3">
                         <Pagination page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage} total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize} />
                     </div>
