@@ -8,6 +8,8 @@ import { getOrganizationUsers } from '@/(api-handlers)/userHandler';
 import { UserResponse } from '@/interfaces/loginInterface';
 import { handleErrorMessage } from '@/utils/handleErrorMessage';
 import PageHeader from '@/components/(shared-components)/PageHeader';
+import Pagination from '@/components/(shared-components)/Pagination';
+import { usePagination } from '@/hooks/usePagination';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,6 +58,7 @@ export default function PayrollEmployeesPage() {
             .includes(searchText.toLowerCase())
     );
     const withoutProfileCount = users.length - withProfile.length;
+    const pg = usePagination(filtered, 10);
 
     if (!user || user.role !== 'admin') {
         return (
@@ -127,7 +130,7 @@ export default function PayrollEmployeesPage() {
                                         </p>
                                     </TableCell>
                                 </TableRow>
-                            ) : filtered.map(u => (
+                            ) : pg.pageItems.map(u => (
                                 <TableRow key={u.id}>
                                     <TableCell className="pl-6">
                                         <div className="flex items-center gap-3">
@@ -160,6 +163,11 @@ export default function PayrollEmployeesPage() {
                         </TableBody>
                     </Table>
                 </div>
+                {!loading && filtered.length > 0 && (
+                    <div className="border-border bg-muted/30 border-t px-4 py-3">
+                        <Pagination page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage} total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize} />
+                    </div>
+                )}
             </Card>
         </div>
     );

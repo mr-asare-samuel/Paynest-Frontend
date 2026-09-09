@@ -27,6 +27,8 @@ import { DatePicker } from 'antd';
 import dayjs from 'dayjs';
 import { cn } from "@/lib/utils";
 import { useCurrency } from "@/hooks/useCurrency";
+import Pagination from "@/components/(shared-components)/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 import { useRouter } from "next/navigation";
 
 interface AdminViewProps {
@@ -72,6 +74,7 @@ export default function AdminView({
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+    const pg = usePagination(history, 10);
 
     useEffect(() => {
         if (activeShopId) fetchHistory();
@@ -400,7 +403,7 @@ export default function AdminView({
                                         <p className="text-muted-foreground mt-1 text-sm">Try adjusting the date range filter.</p>
                                     </TableCell>
                                 </TableRow>
-                            ) : history.map(rec => (
+                            ) : pg.pageItems.map(rec => (
                                 <TableRow key={rec.id}>
                                     <TableCell className="pl-6 text-sm">{safeFormat(rec.closure_date, 'MMM d, yyyy')}</TableCell>
                                     <TableCell className="text-muted-foreground text-sm font-mono">{rec.closure_number}</TableCell>
@@ -452,6 +455,11 @@ export default function AdminView({
                         </TableBody>
                     </Table>
                 </div>
+                {!loadingHistory && history.length > 0 && (
+                    <div className="border-border bg-muted/30 border-t px-4 py-3">
+                        <Pagination page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage} total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize} />
+                    </div>
+                )}
             </Card>
         </div>
     );

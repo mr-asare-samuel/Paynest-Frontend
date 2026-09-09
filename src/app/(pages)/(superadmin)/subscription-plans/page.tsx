@@ -13,6 +13,8 @@ import {
 } from '@/(api-handlers)/subscriptionPlansHandler';
 import { SubscriptionPlanResponse } from '@/interfaces/subscriptionPlan';
 import PageHeader from '@/components/(shared-components)/PageHeader';
+import Pagination from '@/components/(shared-components)/Pagination';
+import { usePagination } from '@/hooks/usePagination';
 import EmptyState from '@/components/(shared-components)/EmptyState';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -67,6 +69,7 @@ export default function SubscriptionPlansPage() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingPlan, setEditingPlan] = useState<SubscriptionPlanResponse | null>(null);
     const [saving, setSaving] = useState(false);
+    const pg = usePagination(plans, 10);
     const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlanResponse | null>(null);
     const [isDeleteOpen, setIsDeleteOpen] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
@@ -232,7 +235,7 @@ export default function SubscriptionPlansPage() {
                                         />
                                     </TableCell>
                                 </TableRow>
-                            ) : plans.map(plan => (
+                            ) : pg.pageItems.map(plan => (
                                 <TableRow key={plan.id}>
                                     <TableCell className="pl-6">
                                         <p className="text-foreground font-semibold text-sm leading-tight">{plan.name}</p>
@@ -290,6 +293,11 @@ export default function SubscriptionPlansPage() {
                         </TableBody>
                     </Table>
                 </div>
+                {!loading && plans.length > 0 && (
+                    <div className="border-border bg-muted/30 border-t px-4 py-3">
+                        <Pagination page={pg.page} totalPages={pg.totalPages} onPageChange={pg.setPage} total={pg.total} pageSize={pg.pageSize} onPageSizeChange={pg.setPageSize} />
+                    </div>
+                )}
             </Card>
 
             {/* Create / Edit Dialog */}
